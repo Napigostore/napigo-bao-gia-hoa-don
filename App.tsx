@@ -170,7 +170,7 @@ export default function App() {
             <Text style={styles.primaryText}>+ Hóa đơn</Text>
           </Pressable>
         </View>
-        {db.docs.length === 0 && <Text style={styles.muted}>Chưa có chứng từ nào. Bấm "+ Báo giá" để bắt đầu.</Text>}
+        {db.docs.length === 0 && <Text style={styles.muted}>Chưa có chứng từ nào. Bấm “+ Báo giá” để bắt đầu.</Text>}
         {db.docs.map(d => {
           const t = documentTotals(d);
           const next = NEXT_LABEL[d.status];
