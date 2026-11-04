@@ -1,0 +1,16 @@
+{
+  "expo": {
+    "name": "Báo giá & Hóa đơn",
+    "slug": "napigo-quote-app",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "automatic",
+    "scheme": "napigoquote",
+    "ios": {
+      "bundleIdentifier": "com.napigo.baogiahoadon",
+      "buildNumber": "1",
+      "supportsTablet": false
+    },
+    "newArchEnabled": true
+  }
+}
