@@ -12,6 +12,7 @@ export type Doc = {
   discountPct: number;
   taxPct: number;
   status: Status;
+  templateId?: string;
   createdAt: string;
 };
 export type Db = { docs: Doc[]; counters: Record<DocKind, number> };

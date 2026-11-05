@@ -2,6 +2,26 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { lineTotal, documentTotals, canMove, nextNumber, formatVND, nextStatus } from './calc.ts';
+import { TEMPLATES, templatesFor, findTemplate } from './templates.ts';
+import { PLANS, formatUsdPerYear } from './config/pricing.ts';
+
+test('pricing: 3 plans Free/Pro/Business with CEO prices, ads only on Free', () => {
+  assert.deepEqual(PLANS.map(p => p.id), ['free', 'pro', 'business']);
+  assert.deepEqual(PLANS.map(p => p.priceUsdPerYear), [0, 1.99, 4.99]);
+  assert.deepEqual(PLANS.map(p => p.hasAds), [true, false, false]);
+  assert.equal(formatUsdPerYear(PLANS[0]), '0 USD');
+  assert.equal(formatUsdPerYear(PLANS[1]), '1.99 USD/năm');
+  assert.equal(formatUsdPerYear(PLANS[2]), '4.99 USD/năm');
+});
+
+test('templates: 8 total, 4 per kind, unique ids, findTemplate works', () => {
+  assert.equal(TEMPLATES.length, 8);
+  assert.equal(templatesFor('QUO').length, 4);
+  assert.equal(templatesFor('INV').length, 4);
+  assert.equal(new Set(TEMPLATES.map(t => t.id)).size, 8);
+  assert.equal(findTemplate('inv-final')?.kind, 'INV');
+  assert.equal(findTemplate('nope'), undefined);
+});
 
 test('lineTotal basic and with discount', () => {
   assert.equal(lineTotal({ qty: 2, price: 150000 }), 300000);
