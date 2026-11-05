@@ -114,7 +114,7 @@ jobs:
           # profile would need a registered iPhone); the export signs it for App Store distribution.
           xcodebuild -workspace "$WS" -scheme "$APP" -configuration Release \
             -destination 'generic/platform=iOS' -archivePath "$RUNNER_TEMP/$APP.xcarchive" \
-            DEVELOPMENT_TEAM="$TEAM" CURRENT_PROJECT_VERSION="${{ github.run_number }}" \
+            DEVELOPMENT_TEAM="$TEAM" CURRENT_PROJECT_VERSION="${{ github.run_number }}" DIAGNOSE_MISSING_TARGET_DEPENDENCIES=NO \
             CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" \
             archive > archive.log 2>&1 || report archive.log
           grep -q "ARCHIVE SUCCEEDED" archive.log || report archive.log
