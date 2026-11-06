@@ -47,7 +47,62 @@ export function nextNumber(prefix: DocKind, lastNumber: number): string {
   return `${prefix}-${String(n).padStart(4, '0')}`;
 }
 
+export type ConvertibleDoc = {
+  id: string; kind: DocKind; no: string; status: Status; items: LineItem[]; createdAt: string;
+  templateId?: string; sourceId?: string; convertedTo?: string;
+};
+
+// A quote becomes a draft invoice with the same customer, lines, discount and VAT; null if it is not a quote or was already converted.
+export function quoteToInvoice<T extends ConvertibleDoc>(quote: T, invoiceId: string, invoiceNo: string, now: string): T | null {
+  if (quote.kind !== 'QUO' || quote.convertedTo) return null;
+  return {
+    ...quote,
+    id: invoiceId,
+    kind: 'INV',
+    no: invoiceNo,
+    status: 'draft',
+    items: quote.items.map(it => ({ ...it })),
+    templateId: undefined,
+    sourceId: quote.id,
+    convertedTo: undefined,
+    createdAt: now,
+  };
+}
+
 export function formatVND(n: number): string {
   const v = Math.round(Number(n) || 0);
   return v.toString().replace(/\B(?=(\d{3})+(?!\d))/g, '.') + ' ₫';
+}
+
+const DIGITS = ['không', 'một', 'hai', 'ba', 'bốn', 'năm', 'sáu', 'bảy', 'tám', 'chín'];
+const SCALES = ['', 'nghìn', 'triệu', 'tỷ', 'nghìn tỷ', 'triệu tỷ'];
+
+// Reads one 0..999 group; `full` keeps the leading "không trăm" when a higher group exists.
+function readGroup(n: number, full: boolean): string {
+  const h = Math.floor(n / 100), t = Math.floor((n % 100) / 10), u = n % 10;
+  const words: string[] = [];
+  if (h > 0 || full) words.push(DIGITS[h], 'trăm');
+  if (t === 0) {
+    if (u > 0 && (h > 0 || full)) words.push('lẻ');
+  } else {
+    words.push(t === 1 ? 'mười' : `${DIGITS[t]} mươi`);
+  }
+  if (u > 0) words.push(u === 1 && t > 1 ? 'mốt' : u === 5 && t > 0 ? 'lăm' : DIGITS[u]);
+  return words.join(' ');
+}
+
+// Amount in Vietnamese words for invoices, e.g. 1.250.000 -> "Một triệu hai trăm năm mươi nghìn đồng."
+export function amountInWords(n: number): string {
+  const v = Math.round(Number(n) || 0);
+  if (!Number.isSafeInteger(v)) return '';
+  if (v === 0) return 'Không đồng.';
+  const groups: number[] = [];
+  for (let rest = Math.abs(v); rest > 0; rest = Math.floor(rest / 1000)) groups.push(rest % 1000);
+  const parts: string[] = [];
+  for (let i = groups.length - 1; i >= 0; i--) {
+    if (groups[i] === 0) continue;
+    parts.push(readGroup(groups[i], i < groups.length - 1), SCALES[i]);
+  }
+  const text = `${v < 0 ? 'âm ' : ''}${parts.filter(Boolean).join(' ')} đồng.`;
+  return text.charAt(0).toUpperCase() + text.slice(1);
 }

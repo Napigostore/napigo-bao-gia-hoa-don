@@ -6,6 +6,11 @@ export type Seller = {
   taxCode: string; // mã số thuế
   address: string;
   logoUri: string; // data: URI or https URL of a square logo; empty = no logo
+  signatureUri: string; // data: URI or https URL of the signature image; empty = blank signing space
+  signerName: string; // printed under the signature
+  bankCode: string; // VietQR bank short name or BIN (e.g. VCB, 970436); empty = no QR
+  bankAccount: string;
+  bankHolder: string;
 };
 
 export const SELLER: Seller = {
@@ -13,4 +18,9 @@ export const SELLER: Seller = {
   taxCode: '',
   address: '',
   logoUri: '',
+  signatureUri: '',
+  signerName: '',
+  bankCode: '',
+  bankAccount: '',
+  bankHolder: '',
 };

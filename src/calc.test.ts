@@ -1,7 +1,7 @@
 // Run: npm test
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { lineTotal, documentTotals, canMove, nextNumber, formatVND, nextStatus } from './calc.ts';
+import { lineTotal, documentTotals, canMove, nextNumber, formatVND, nextStatus, amountInWords, quoteToInvoice, type ConvertibleDoc, type DocInput } from './calc.ts';
 import { TEMPLATES, templatesFor, findTemplate } from './templates.ts';
 import { PLANS, formatUsdPerYear } from './config/pricing.ts';
 
@@ -60,4 +60,29 @@ test('nextNumber pads and increments', () => {
 test('formatVND groups thousands with dots', () => {
   assert.equal(formatVND(1500000), '1.500.000 ₫');
   assert.equal(formatVND(0), '0 ₫');
+});
+test('quoteToInvoice: copies lines/discount/VAT into a new draft invoice, once, quotes only', () => {
+  const quote: ConvertibleDoc & DocInput = { id: 'q1', kind: 'QUO', no: 'QUO-0001', status: 'sent', createdAt: 'a', templateId: 'quo-goods',
+    items: [{ name: 'A', qty: 2, price: 500000 }], discountPct: 10, taxPct: 8 };
+  const inv = quoteToInvoice(quote, 'i1', 'INV-0001', 'b');
+  assert.ok(inv);
+  assert.equal(inv.kind, 'INV');
+  assert.equal(inv.no, 'INV-0001');
+  assert.equal(inv.status, 'draft');
+  assert.equal(inv.sourceId, 'q1');
+  assert.equal(inv.templateId, undefined);
+  assert.deepEqual(documentTotals(inv), documentTotals(quote));
+  assert.notEqual(inv.items[0], quote.items[0]);
+  assert.equal(quoteToInvoice({ ...quote, convertedTo: 'i1' }, 'i2', 'INV-0002', 'c'), null);
+  assert.equal(quoteToInvoice({ ...quote, kind: 'INV' }, 'i2', 'INV-0002', 'c'), null);
+});
+test('amountInWords: Vietnamese reading rules', () => {
+  assert.equal(amountInWords(0), 'Không đồng.');
+  assert.equal(amountInWords(15), 'Mười lăm đồng.');
+  assert.equal(amountInWords(21), 'Hai mươi mốt đồng.');
+  assert.equal(amountInWords(105), 'Một trăm lẻ năm đồng.');
+  assert.equal(amountInWords(1250000), 'Một triệu hai trăm năm mươi nghìn đồng.');
+  assert.equal(amountInWords(1005000), 'Một triệu không trăm lẻ năm nghìn đồng.');
+  assert.equal(amountInWords(2000000000), 'Hai tỷ đồng.');
+  assert.equal(amountInWords(-500), 'Âm năm trăm đồng.');
 });

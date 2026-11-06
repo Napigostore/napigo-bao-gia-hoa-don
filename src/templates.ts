@@ -37,22 +37,22 @@ export const TEMPLATES: Template[] = [
     footer: 'Cảm ơn quý khách đã quan tâm.',
   },
   {
-    id: 'inv-standard', kind: 'INV', name: 'Hóa đơn bán hàng', hint: 'Mẫu thông dụng nhất', accent: '#248A3D', taxPct: 8, note: '',
+    id: 'inv-standard', kind: 'INV', name: 'Phiếu thu bán hàng', hint: 'Mẫu thông dụng nhất', accent: '#248A3D', taxPct: 8, note: '',
     items: [item('Sản phẩm / dịch vụ', 1, 0)],
     footer: 'Cảm ơn quý khách đã tin tưởng.',
   },
   {
-    id: 'inv-service', kind: 'INV', name: 'Hóa đơn dịch vụ', hint: 'Thu phí dịch vụ theo kỳ', accent: '#30B0C7', taxPct: 8, note: 'Kỳ thanh toán:',
+    id: 'inv-service', kind: 'INV', name: 'Phiếu thu dịch vụ', hint: 'Thu phí dịch vụ theo kỳ', accent: '#30B0C7', taxPct: 8, note: 'Kỳ thanh toán:',
     items: [item('Phí dịch vụ', 1, 0)],
     footer: 'Cảm ơn quý khách đã tin tưởng.',
   },
   {
-    id: 'inv-deposit', kind: 'INV', name: 'Hóa đơn tạm ứng', hint: 'Thu trước một phần', accent: '#C93400', taxPct: 0, note: 'Tạm ứng theo báo giá số:',
+    id: 'inv-deposit', kind: 'INV', name: 'Phiếu thu tạm ứng', hint: 'Thu trước một phần', accent: '#C93400', taxPct: 0, note: 'Tạm ứng theo báo giá số:',
     items: [item('Tạm ứng', 1, 0)],
-    footer: 'Khoản tạm ứng sẽ được trừ vào hóa đơn cuối.',
+    footer: 'Khoản tạm ứng sẽ được trừ vào phiếu thu cuối.',
   },
   {
-    id: 'inv-final', kind: 'INV', name: 'Hóa đơn quyết toán', hint: 'Thanh toán đợt cuối', accent: '#1D1D1F', taxPct: 10, note: 'Quyết toán theo hợp đồng / báo giá số:',
+    id: 'inv-final', kind: 'INV', name: 'Phiếu thu quyết toán', hint: 'Thanh toán đợt cuối', accent: '#1D1D1F', taxPct: 10, note: 'Quyết toán theo hợp đồng / báo giá số:',
     items: [item('Giá trị hợp đồng', 1, 0), item('Trừ tạm ứng', 1, 0)],
     footer: 'Cảm ơn quý khách đã tin tưởng.',
   },

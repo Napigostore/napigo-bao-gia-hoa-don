@@ -18,7 +18,8 @@ Copied from `C:\AI\Seller tool\ShiftCalendar` and changed to the app A bundle ID
 1. **Create the app record** in App Store Connect with bundle ID `com.napigo.baogiahoadon` (CEO).
 2. **Create the GitHub repo** and add the 4 secrets: `APPLE_TEAM_ID`, `ASC_KEY_ID`, `ASC_ISSUER_ID`, `ASC_KEY_P8` (CEO).
 3. **Demo mode for screenshots:** `ios.yml` launches the app with `-demo` flags. The app has no `src/demo.ts` yet, so the `listing` job will fail. Either add demo data or skip the listing job for now.
-4. **Pricing:** not decided. The app currently has no paywall.
+4. **Pricing:** decided by the CEO (2026-11-05): Free with ads, Pro 1.99 USD/year, Business 4.99 USD/year. The pricing screen exists; there is no in-app purchase yet, so `asc_pro.py` is still not needed for the first build. See `reports/86_chot_gia_ten_goi_va_ci_todo.md`.
+   **Naming:** the app and PDFs call the collection document "Phiếu thu" (not "Hóa đơn"), and the PDF footer says "Chứng từ nội bộ, không thay thế hóa đơn điện tử." The app name stays "Báo giá & Hóa đơn" for store search.
 5. **Privacy policy URL and support email** are needed for the listing.
 
 ## Rule
