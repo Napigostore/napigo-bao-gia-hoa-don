@@ -11,6 +11,8 @@ export type Seller = {
   bankCode: string; // VietQR bank short name or BIN (e.g. VCB, 970436); empty = no QR
   bankAccount: string;
   bankHolder: string;
+  eInvoiceSymbol: string; // ký hiệu hóa đơn điện tử, VD 1C26TAA (mẫu số + ký hiệu); cấp bởi cơ quan thuế / nhà cung cấp
+  eInvoiceProvider: string; // id nhà cung cấp hóa đơn điện tử, xem EINVOICE_PROVIDERS trong src/einvoice.ts; rỗng = chưa nối
 };
 
 export const SELLER: Seller = {
@@ -23,4 +25,6 @@ export const SELLER: Seller = {
   bankCode: '',
   bankAccount: '',
   bankHolder: '',
+  eInvoiceSymbol: '',
+  eInvoiceProvider: '',
 };

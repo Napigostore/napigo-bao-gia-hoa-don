@@ -106,3 +106,33 @@ export function amountInWords(n: number): string {
   const text = `${v < 0 ? 'âm ' : ''}${parts.filter(Boolean).join(' ')} đồng.`;
   return text.charAt(0).toUpperCase() + text.slice(1);
 }
+
+const EN_ONES = ['zero', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine', 'ten', 'eleven', 'twelve', 'thirteen', 'fourteen', 'fifteen', 'sixteen', 'seventeen', 'eighteen', 'nineteen'];
+const EN_TENS = ['', '', 'twenty', 'thirty', 'forty', 'fifty', 'sixty', 'seventy', 'eighty', 'ninety'];
+const EN_SCALES = ['', 'thousand', 'million', 'billion', 'trillion'];
+
+function enGroup(n: number): string {
+  const h = Math.floor(n / 100), rest = n % 100;
+  const words: string[] = [];
+  if (h > 0) words.push(EN_ONES[h], 'hundred');
+  if (rest > 0) {
+    if (rest < 20) words.push(EN_ONES[rest]);
+    else words.push(EN_TENS[Math.floor(rest / 10)] + (rest % 10 ? `-${EN_ONES[rest % 10]}` : ''));
+  }
+  return words.join(' ');
+}
+
+// Amount in English words for international templates, e.g. 1250 -> "One thousand two hundred fifty only."
+export function amountInWordsEn(n: number, currency = 'VND'): string {
+  const v = Math.round(Number(n) || 0);
+  if (!Number.isSafeInteger(v) || v === 0) return `Zero ${currency} only.`;
+  const groups: number[] = [];
+  for (let rest = Math.abs(v); rest > 0; rest = Math.floor(rest / 1000)) groups.push(rest % 1000);
+  const parts: string[] = [];
+  for (let i = groups.length - 1; i >= 0; i--) {
+    if (groups[i] === 0) continue;
+    parts.push(enGroup(groups[i]), EN_SCALES[i]);
+  }
+  const text = `${v < 0 ? 'minus ' : ''}${parts.filter(Boolean).join(' ')} ${currency} only.`;
+  return text.charAt(0).toUpperCase() + text.slice(1);
+}

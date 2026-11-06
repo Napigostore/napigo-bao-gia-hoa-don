@@ -5,7 +5,10 @@ import { SymbolView } from 'expo-symbols';
 import { amountInWords, documentTotals, formatVND, nextNumber, nextStatus, quoteToInvoice, type DocKind, type LineItem, type Status } from './src/calc.ts';
 import { loadDb, saveDb, type Contact, type Db, type Doc, type SavedTemplate } from './src/storage.ts';
 import { printDoc, shareDocPdf } from './src/pdf.ts';
+import { validateEInvoice } from './src/einvoice.ts';
+import { shareEInvoiceXml } from './src/einvoiceShare.ts';
 import PricingScreen from './src/PricingScreen.tsx';
+import type { Seller } from './src/config/seller.ts';
 import { findTemplate, templatesFor, type Template } from './src/templates.ts';
 
 const STATUS_LABEL: Record<Status, string> = { draft: 'Nháp', sent: 'Đã gửi', paid: 'Đã thu' };
@@ -182,9 +185,20 @@ export default function App() {
       taxPct: draft.taxPct,
       note: draft.note,
       items: draft.items.map(it => ({ ...it })),
+      baseId: draft.templateId,
     };
     await persist({ ...db, templates: [tpl, ...db.templates] });
     Alert.alert('Đã lưu mẫu', 'Mẫu nằm ở mục “Mẫu của tôi” khi tạo mới.');
+  }
+
+  // Checks the invoice fields first; lists every problem so the user fixes them in one pass.
+  function exportEInvoice(doc: Doc, seller: Seller) {
+    const issues = validateEInvoice(doc, seller);
+    if (issues.length) {
+      Alert.alert('Chưa đủ thông tin hóa đơn điện tử', issues.map(i => `• ${i.message}`).join('\n'));
+      return;
+    }
+    shareEInvoiceXml(doc, seller).catch(() => Alert.alert('Không xuất được XML'));
   }
 
   async function removeTemplate(id: string) {
@@ -275,6 +289,8 @@ export default function App() {
           <TextInput style={styles.input} value={s.address} onChangeText={v => setSeller({ address: v })} />
           <Text style={styles.label}>Logo (đường dẫn ảnh https)</Text>
           <TextInput style={styles.input} autoCapitalize="none" autoCorrect={false} keyboardType="url" value={s.logoUri} onChangeText={v => setSeller({ logoUri: v })} placeholder="https://…" placeholderTextColor={c.muted} />
+          <Text style={styles.label}>Ký hiệu hóa đơn điện tử (VD: 1C26TAA)</Text>
+          <TextInput style={styles.input} autoCapitalize="characters" autoCorrect={false} value={s.eInvoiceSymbol} onChangeText={v => setSeller({ eInvoiceSymbol: v.trim() })} />
           <Text style={styles.label}>Chữ ký (đường dẫn ảnh https)</Text>
           <TextInput style={styles.input} autoCapitalize="none" autoCorrect={false} keyboardType="url" value={s.signatureUri} onChangeText={v => setSeller({ signatureUri: v })} placeholder="https://…" placeholderTextColor={c.muted} />
           <Text style={styles.label}>Tên người ký</Text>
@@ -320,6 +336,10 @@ export default function App() {
           <TextInput style={styles.input} keyboardType="phone-pad" value={draft.clientPhone ?? ''} onChangeText={v => setDraft({ ...draft, clientPhone: v })} />
           <Text style={styles.label}>Địa chỉ</Text>
           <TextInput style={styles.input} value={draft.clientAddress ?? ''} onChangeText={v => setDraft({ ...draft, clientAddress: v })} />
+          <Text style={styles.label}>MST người mua (nếu có, cho hóa đơn điện tử)</Text>
+          <TextInput style={styles.input} keyboardType="number-pad" value={draft.clientTaxCode ?? ''} onChangeText={v => setDraft({ ...draft, clientTaxCode: v.trim() })} />
+          <Text style={styles.label}>Email người mua</Text>
+          <TextInput style={styles.input} autoCapitalize="none" autoCorrect={false} keyboardType="email-address" value={draft.clientEmail ?? ''} onChangeText={v => setDraft({ ...draft, clientEmail: v.trim() })} />
           <Text style={styles.label}>Ghi chú</Text>
           <TextInput style={styles.input} value={draft.note} onChangeText={v => setDraft({ ...draft, note: v })} />
 
@@ -398,6 +418,9 @@ export default function App() {
           <Chips styles={styles} values={DISCOUNT_CHOICES} value={draft.discountPct} suffix="%" onPick={v => setDraft({ ...draft, discountPct: v })} />
           <Text style={styles.label}>VAT</Text>
           <Chips styles={styles} values={VAT_CHOICES} value={draft.taxPct} suffix="%" onPick={v => setDraft({ ...draft, taxPct: v })} />
+          {!!findTemplate(draft.templateId)?.eInvoice && (
+            <ActionButton styles={styles} color={c.accent} label="Xuất XML hóa đơn điện tử" symbol="doc.text" glyph="</>" disabled={noClient} onPress={() => exportEInvoice(asDoc(draft), db.seller)} />
+          )}
           <CheckRow styles={styles} label="In logo và thông tin công ty" on={draft.showSeller !== false} onToggle={() => setDraft({ ...draft, showSeller: draft.showSeller === false })} />
 
           <View style={styles.card}>
@@ -516,7 +539,7 @@ export default function App() {
           {db.templates.filter(t => t.kind === picker).map(t => (
             <View key={t.id} style={styles.card}>
               <View style={styles.listRow}>
-                <Pressable style={[styles.flex, styles.listRow]} onPress={() => startNew(picker, t)}>
+                <Pressable style={[styles.flex, styles.listRow]} onPress={() => startNew(picker, { ...t, id: t.baseId ?? t.id })}>
                   <View style={styles.flex}>
                     <Text style={styles.bold}>{t.name}</Text>
                     <Text style={styles.muted}>{t.items.length} hạng mục · chỉ cần nhập khách</Text>

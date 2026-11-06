@@ -14,11 +14,11 @@ test('pricing: 3 plans Free/Pro/Business with CEO prices, ads only on Free', () 
   assert.equal(formatUsdPerYear(PLANS[2]), '4.99 USD/năm');
 });
 
-test('templates: 8 total, 4 per kind, unique ids, findTemplate works', () => {
-  assert.equal(TEMPLATES.length, 8);
-  assert.equal(templatesFor('QUO').length, 4);
-  assert.equal(templatesFor('INV').length, 4);
-  assert.equal(new Set(TEMPLATES.map(t => t.id)).size, 8);
+test('templates: 13 total, 6 quotes and 7 invoices, unique ids, findTemplate works', () => {
+  assert.equal(TEMPLATES.length, 13);
+  assert.equal(templatesFor('QUO').length, 6);
+  assert.equal(templatesFor('INV').length, 7);
+  assert.equal(new Set(TEMPLATES.map(t => t.id)).size, 13);
   assert.equal(findTemplate('inv-final')?.kind, 'INV');
   assert.equal(findTemplate('nope'), undefined);
 });

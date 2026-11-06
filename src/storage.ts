@@ -10,6 +10,8 @@ export type Doc = {
   client: string;
   clientPhone?: string;
   clientAddress?: string;
+  clientTaxCode?: string; // MST người mua (hóa đơn điện tử)
+  clientEmail?: string;
   note: string;
   items: LineItem[];
   discountPct: number;
@@ -22,7 +24,10 @@ export type Doc = {
   createdAt: string;
 };
 // A template the user saved from a finished document: everything but the customer.
-export type SavedTemplate = { id: string; kind: DocKind; name: string; taxPct: number; note: string; items: LineItem[] };
+export type SavedTemplate = {
+  id: string; kind: DocKind; name: string; taxPct: number; note: string; items: LineItem[];
+  baseId?: string; // built-in template it was saved from: keeps its language, title and e-invoice option
+};
 // A product/service the user sells often, picked from a drop list instead of typed.
 export type CatalogItem = { id: string; name: string; price: number };
 // A customer in the address book, picked instead of retyped.
