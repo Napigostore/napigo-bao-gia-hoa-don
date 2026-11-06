@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Alert, Modal, Platform, Pressable, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, useColorScheme, View } from 'react-native';
+import { Alert, Image, Modal, Platform, Pressable, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, useColorScheme, View } from 'react-native';
+import { pickImageDataUri } from './src/imagePick.ts';
 import { StatusBar } from 'expo-status-bar';
 import { SymbolView } from 'expo-symbols';
 import { amountInWords, documentTotals, formatVND, nextNumber, nextStatus, quoteToInvoice, type DocKind, type LineItem, type Status } from './src/calc.ts';
@@ -39,6 +40,37 @@ const FILTERS: { key: 'ALL' | DocKind; label: string }[] = [
 ];
 
 type Draft = Omit<Doc, 'createdAt'> & { createdAt?: string };
+
+// Picks an image from the phone library, shows it, and lets the user replace or remove it.
+function ImageSlot({ styles, uri, aspect, empty, onPick, onError }: {
+  styles: ReturnType<typeof makeStyles>; uri: string; aspect: [number, number]; empty: string;
+  onPick: (v: string) => void; onError: () => void;
+}) {
+  async function pick() {
+    try {
+      const v = await pickImageDataUri(aspect);
+      if (v) onPick(v);
+    } catch {
+      onError();
+    }
+  }
+  return (
+    <View style={styles.card}>
+      <View style={styles.listRow}>
+        {uri ? <Image source={{ uri }} style={{ width: 72, height: 72, borderRadius: 8, resizeMode: 'contain' }} accessibilityLabel="Ảnh đã chọn" /> : <Text style={styles.muted}>{empty}</Text>}
+        <View style={styles.flex} />
+        <Pressable style={styles.ghost} onPress={pick} accessibilityRole="button">
+          <Text style={styles.ghostText}>{uri ? 'Đổi ảnh' : 'Tải ảnh lên'}</Text>
+        </Pressable>
+        {!!uri && (
+          <Pressable style={styles.ghost} onPress={() => onPick('')} accessibilityRole="button">
+            <Text style={styles.ghostText}>Xóa</Text>
+          </Pressable>
+        )}
+      </View>
+    </View>
+  );
+}
 
 // Tick-to-choose values so the common VAT / discount rates need no typing.
 const VAT_CHOICES = [0, 8, 10];
@@ -287,12 +319,13 @@ export default function App() {
           <TextInput style={styles.input} keyboardType="number-pad" value={s.taxCode} onChangeText={v => setSeller({ taxCode: v })} />
           <Text style={styles.label}>Địa chỉ</Text>
           <TextInput style={styles.input} value={s.address} onChangeText={v => setSeller({ address: v })} />
-          <Text style={styles.label}>Logo (đường dẫn ảnh https)</Text>
-          <TextInput style={styles.input} autoCapitalize="none" autoCorrect={false} keyboardType="url" value={s.logoUri} onChangeText={v => setSeller({ logoUri: v })} placeholder="https://…" placeholderTextColor={c.muted} />
+          <Text style={styles.label}>Logo công ty</Text>
+          <ImageSlot styles={styles} uri={s.logoUri} aspect={[1, 1]} empty="Chưa có logo" onPick={v => setSeller({ logoUri: v })} onError={() => Alert.alert('Không chọn được ảnh', 'Cho phép truy cập thư viện ảnh trong Cài đặt của iPhone.')} />
+          <Text style={styles.label}>Ghi chú: logo nên là ảnh vuông, nền trong suốt hoặc trắng.</Text>
           <Text style={styles.label}>Ký hiệu hóa đơn điện tử (VD: 1C26TAA)</Text>
           <TextInput style={styles.input} autoCapitalize="characters" autoCorrect={false} value={s.eInvoiceSymbol} onChangeText={v => setSeller({ eInvoiceSymbol: v.trim() })} />
-          <Text style={styles.label}>Chữ ký (đường dẫn ảnh https)</Text>
-          <TextInput style={styles.input} autoCapitalize="none" autoCorrect={false} keyboardType="url" value={s.signatureUri} onChangeText={v => setSeller({ signatureUri: v })} placeholder="https://…" placeholderTextColor={c.muted} />
+          <Text style={styles.label}>Chữ ký</Text>
+          <ImageSlot styles={styles} uri={s.signatureUri} aspect={[3, 1]} empty="Chưa có chữ ký" onPick={v => setSeller({ signatureUri: v })} onError={() => Alert.alert('Không chọn được ảnh', 'Cho phép truy cập thư viện ảnh trong Cài đặt của iPhone.')} />
           <Text style={styles.label}>Tên người ký</Text>
           <TextInput style={styles.input} value={s.signerName} onChangeText={v => setSeller({ signerName: v })} />
           <Text style={styles.label}>Ngân hàng nhận tiền (mã, VD: VCB) — để in VietQR trên phiếu thu</Text>

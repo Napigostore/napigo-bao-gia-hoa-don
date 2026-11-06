@@ -11,6 +11,9 @@
       "buildNumber": "1",
       "supportsTablet": false
     },
-    "newArchEnabled": true
+    "newArchEnabled": true,
+    "plugins": [
+      ["expo-image-picker", { "photosPermission": "Chọn logo và chữ ký để in trên báo giá và phiếu thu." }]
+    ]
   }
 }

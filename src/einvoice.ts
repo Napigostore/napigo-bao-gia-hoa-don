@@ -7,13 +7,46 @@ import { amountInWords, documentTotals, lineTotal, round2 } from './calc.ts';
 
 export type EInvoiceIssue = { field: string; message: string };
 
-// Connect a real provider here (MISA, Viettel, VNPT, ...). submit() sends the signed XML and returns the provider's answer.
+// What a provider needs from the shop before the app can talk to it. Facts gathered from public docs (2026-11);
+// the endpoints and auth flow must be re-checked against the contract. Nothing here calls the network.
+export type ProviderInfo = {
+  id: string;
+  name: string;
+  docsUrl: string;
+  testBaseUrl: string;
+  liveBaseUrl: string;
+  credentials: string[]; // fields the shop enters in "Thông tin công ty"
+  notes: string;
+};
+
+export const PROVIDER_CATALOG: ProviderInfo[] = [
+  {
+    id: 'misa-meinvoice',
+    name: 'MISA meInvoice',
+    docsUrl: 'https://doc.meinvoice.vn/about',
+    testBaseUrl: 'https://testapi.meinvoice.vn/api/integration (test: testapp.meinvoice.vn)',
+    liveBaseUrl: 'app.meinvoice.vn',
+    credentials: ['Mã số thuế', 'Tên đăng nhập', 'Mật khẩu', 'AppId'],
+    notes: 'Đăng ký dịch vụ trên meinvoice.vn trước. Tích hợp sâu qua API/SDK. Lấy access token rồi gọi API phát hành. Đường dẫn cần xác nhận với tài liệu chính thức (nguồn cộng đồng ghi /api/integration, nguồn khác ghi /api/v3).',
+  },
+  {
+    id: 'viettel-sinvoice',
+    name: 'Viettel S-Invoice',
+    docsUrl: 'https://www.sinvoice.vn/2021/02/hdsd-danh-sach-phan-mem-tich-hop-thanh-cong-tren-hoa-don-dien-tu-viettel.html',
+    testBaseUrl: 'https://demo-sinvoice.viettel.vn:8443/InvoiceAPI/',
+    liveBaseUrl: 'Theo hợp đồng Viettel',
+    credentials: ['Mã số thuế', 'Tài khoản Webservice', 'Mật khẩu Webservice', 'Ký hiệu hóa đơn'],
+    notes: 'Dùng Webservice (InvoiceWS, InvoiceUtilsWS). Tài khoản Webservice được cấu hình riêng. Hệ thống xử lý bất đồng bộ: đợi vài giây rồi mới tải lại file hóa đơn.',
+  },
+];
+
+// Connect a real provider here: submit() sends the signed XML and returns the provider's answer.
 export type EInvoiceProvider = {
   id: string;
   name: string;
   submit: (xml: string) => Promise<{ ok: boolean; message: string }>;
 };
-// Empty on purpose: no provider contract yet. Add an entry when the CEO picks one.
+// Empty until a contract is signed. Each entry must implement submit() against PROVIDER_CATALOG's docs.
 export const EINVOICE_PROVIDERS: EInvoiceProvider[] = [];
 
 export function findProvider(id: string): EInvoiceProvider | undefined {
