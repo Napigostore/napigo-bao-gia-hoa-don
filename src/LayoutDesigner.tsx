@@ -1,9 +1,7 @@
 // Layout designer: drag a part to move it, pinch it to zoom, and change its size and font.
-// Gestures come from react-native-gesture-handler; the motion runs on the UI thread with reanimated.
-import { useState } from 'react';
-import { Pressable, Text, TextInput, View } from 'react-native';
-import { Gesture, GestureDetector } from 'react-native-gesture-handler';
-import Animated, { runOnJS, useAnimatedStyle, useSharedValue, withSpring } from 'react-native-reanimated';
+// Uses only React Native core (PanResponder + Animated), so no native gesture or animation pods are needed.
+import { useEffect, useRef, useState } from 'react';
+import { Animated, PanResponder, Pressable, Text, TextInput, View } from 'react-native';
 import { ALIGNS, ALIGN_LABEL, BLOCK_LABEL, BLOCKS, clamp, DEFAULT_BLOCK_STYLE, defaultAlign, DESIGNS, FONTS, moveTo, toggleBlock, type Block, type BlockStyle, type DesignKey, type FontKey, type Layout } from './layout.ts';
 import { Thumb } from './Thumb.tsx';
 
@@ -24,54 +22,73 @@ type RowProps = {
 };
 
 function PartRow({ index, total, block, style, tone, onMove, onStyle, onToggle }: RowProps) {
-  const dragY = useSharedValue(0);
-  const zoom = useSharedValue(1);
-  const lift = useSharedValue(0);
+  const [dragY] = useState(() => new Animated.Value(0));
+  const [zoom] = useState(() => new Animated.Value(1));
+  // Latest props for the gesture handlers, which are created once.
+  const live = useRef({ index, total, style, onMove, onStyle });
+  useEffect(() => { live.current = { index, total, style, onMove, onStyle }; });
+  const pinchStart = useRef<number | null>(null);
+  const pinchRatio = useRef(1);
 
-  const drag = Gesture.Pan()
-    .onStart(() => { lift.value = withSpring(1); })
-    .onUpdate(e => { dragY.value = e.translationY; })
-    .onEnd(e => {
-      const steps = Math.round(e.translationY / ROW);
-      dragY.value = withSpring(0);
-      lift.value = withSpring(0);
-      const to = clamp(index + steps, 0, total - 1);
-      if (to !== index) runOnJS(onMove)(index, to);
-    });
+  const dist = (t: readonly { pageX: number; pageY: number }[]) => Math.hypot(t[0].pageX - t[1].pageX, t[0].pageY - t[1].pageY);
 
-  const pinch = Gesture.Pinch()
-    .onUpdate(e => { zoom.value = e.scale; })
-    .onEnd(e => {
-      zoom.value = withSpring(1);
-      runOnJS(onStyle)({ scale: clamp(style.scale * e.scale, 0.6, 1.6) });
-    });
-
-  const rowStyle = useAnimatedStyle(() => ({
-    transform: [{ translateY: dragY.value }, { scale: 1 + 0.03 * lift.value }],
-    zIndex: lift.value > 0 ? 10 : 0,
-    shadowOpacity: 0.25 * lift.value,
+  // Drag the ⋮⋮ handle up or down: the row follows the finger, then snaps to the nearest row.
+  // The handlers read the latest props through a ref when a gesture ends, never during render.
+  // eslint-disable-next-line react-hooks/refs
+  const [drag] = useState(() => PanResponder.create({
+    onStartShouldSetPanResponder: () => true,
+    onMoveShouldSetPanResponder: (_, g) => Math.abs(g.dy) > 4,
+    onPanResponderMove: (_, g) => dragY.setValue(g.dy),
+    onPanResponderRelease: (_, g) => {
+      const { index: i, total: n, onMove: move } = live.current;
+      const to = clamp(i + Math.round(g.dy / ROW), 0, n - 1);
+      Animated.spring(dragY, { toValue: 0, useNativeDriver: true }).start();
+      if (to !== i) move(i, to);
+    },
+    onPanResponderTerminate: () => { Animated.spring(dragY, { toValue: 0, useNativeDriver: true }).start(); },
   }));
-  const zoomStyle = useAnimatedStyle(() => ({ transform: [{ scale: zoom.value }] }));
+
+  // Pinch with two fingers on the name: zooms the part between 60% and 160%.
+  // eslint-disable-next-line react-hooks/refs
+  const [pinch] = useState(() => PanResponder.create({
+    onStartShouldSetPanResponder: () => false,
+    onMoveShouldSetPanResponder: e => e.nativeEvent.touches.length >= 2,
+    onPanResponderGrant: e => {
+      const t = e.nativeEvent.touches;
+      if (t.length >= 2) pinchStart.current = dist(t);
+    },
+    onPanResponderMove: e => {
+      const t = e.nativeEvent.touches;
+      if (t.length >= 2 && pinchStart.current) {
+        pinchRatio.current = dist(t) / pinchStart.current;
+        zoom.setValue(clamp(pinchRatio.current, 0.6, 1.6));
+      }
+    },
+    onPanResponderRelease: () => {
+      const { style: st, onStyle: apply } = live.current;
+      apply({ scale: clamp(+(st.scale * pinchRatio.current).toFixed(2), 0.6, 1.6) });
+      pinchStart.current = null;
+      pinchRatio.current = 1;
+      zoom.setValue(1);
+    },
+    onPanResponderTerminate: () => { pinchStart.current = null; pinchRatio.current = 1; zoom.setValue(1); },
+  }));
 
   const fontKey = style.font ?? FONT_KEYS[0];
   const nextFont = () => onStyle({ font: FONT_KEYS[(FONT_KEYS.indexOf(fontKey) + 1) % FONT_KEYS.length] });
 
   return (
-    <Animated.View style={[{ backgroundColor: tone.card, borderRadius: 12, marginBottom: 8, padding: 10, shadowColor: '#000', shadowRadius: 8, shadowOffset: { width: 0, height: 4 } }, rowStyle]}>
+    <Animated.View style={{ backgroundColor: tone.card, borderRadius: 12, marginBottom: 8, padding: 10, transform: [{ translateY: dragY }] }}>
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-        <GestureDetector gesture={drag}>
-          <View accessibilityLabel={`Kéo để đổi vị trí: ${BLOCK_LABEL[block]}`} style={{ paddingHorizontal: 8, paddingVertical: 10 }}>
-            <Text style={{ color: tone.muted, fontSize: 18 }}>⋮⋮</Text>
-          </View>
-        </GestureDetector>
-        <GestureDetector gesture={pinch}>
-          <Animated.View style={[{ flex: 1 }, zoomStyle]}>
-            <Text style={{ color: tone.ink, fontWeight: '600' }}>{index + 1}. {BLOCK_LABEL[block]}</Text>
-            <Text style={{ color: tone.muted, fontSize: 12, marginTop: 2 }}>
-              Thu phóng {Math.round(style.scale * 100)}% · cỡ {style.size}px · {FONTS[fontKey].label}
-            </Text>
-          </Animated.View>
-        </GestureDetector>
+        <View {...drag.panHandlers} accessibilityLabel={`Kéo để đổi vị trí: ${BLOCK_LABEL[block]}`} style={{ paddingHorizontal: 8, paddingVertical: 10 }}>
+          <Text style={{ color: tone.muted, fontSize: 18 }}>⋮⋮</Text>
+        </View>
+        <Animated.View {...pinch.panHandlers} style={{ flex: 1, transform: [{ scale: zoom }] }}>
+          <Text style={{ color: tone.ink, fontWeight: '600' }}>{index + 1}. {BLOCK_LABEL[block]}</Text>
+          <Text style={{ color: tone.muted, fontSize: 12, marginTop: 2 }}>
+            Thu phóng {Math.round(style.scale * 100)}% · cỡ {style.size}px · {FONTS[fontKey].label}
+          </Text>
+        </Animated.View>
         <Pressable onPress={onToggle} accessibilityRole="button" accessibilityLabel={`Ẩn ${BLOCK_LABEL[block]}`} style={{ padding: 8 }}>
           <Text style={{ color: tone.muted, fontSize: 16 }}>✕</Text>
         </Pressable>
