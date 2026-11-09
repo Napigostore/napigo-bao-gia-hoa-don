@@ -1,4 +1,5 @@
-// Expo config plugin: builds every CocoaPods target with Swift strict-concurrency checking set to "minimal".
+// Expo config plugin: builds every CocoaPods target in Swift 5 mode with strict-concurrency checking "minimal".
+// (Swift 6 language mode is what reports "sending ... risks causing data races" as an error.)
 // Xcode 26.3 turns expo-modules-jsi's Swift data-race diagnostic ("sending 'slot' risks causing data races")
 // into an error, which fails the archive on CI. This only changes the generated Podfile during prebuild.
 const { withPodfile } = require('expo/config-plugins');
@@ -16,6 +17,7 @@ module.exports = config =>
     installer.pods_project.targets.each do |target|
       target.build_configurations.each do |bc|
         bc.build_settings['SWIFT_STRICT_CONCURRENCY'] = 'minimal'
+        bc.build_settings['SWIFT_VERSION'] = '5.0'
       end
     end`;
     c.modResults.contents = s.replace(HOOK, m => m + block);
