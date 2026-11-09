@@ -8,7 +8,7 @@ import type { Seller } from './config/seller.ts';
 
 const seller: Seller = {
   name: 'Công ty TNHH Napigo', taxCode: '0312345678', address: '1 Lê Lợi, Q1, TP.HCM', logoUri: '', signatureUri: '', signerName: '',
-  bankCode: '', bankAccount: '', bankHolder: '', eInvoiceSymbol: '1C26TAA', eInvoiceProvider: '',
+  bankCode: '', bankAccount: '', bankHolder: '', bankQrUri: '', eInvoiceSymbol: '1C26TAA', eInvoiceProvider: '',
 };
 
 const doc: Doc = {

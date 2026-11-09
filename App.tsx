@@ -1,19 +1,22 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Alert, Image, Modal, Platform, Pressable, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, useColorScheme, View } from 'react-native';
+import { Alert, Image, Modal, Platform, Pressable, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, useColorScheme, useWindowDimensions, View } from 'react-native';
 import { pickImageDataUri } from './src/imagePick.ts';
 import { StatusBar } from 'expo-status-bar';
 import { SymbolView } from 'expo-symbols';
-import { amountInWords, documentTotals, formatVND, nextNumber, nextStatus, quoteToInvoice, type DocKind, type LineItem, type Status } from './src/calc.ts';
-import { loadDb, saveDb, type Contact, type Db, type Doc, type SavedTemplate } from './src/storage.ts';
+import { amountInWords, documentTotals, formatVND, nextNumber, nextStatus, quoteToInvoice, calcDiscountPct, addCategoryToList, resolveProductPricing, type DocKind, type LineItem, type Status } from './src/calc.ts';
+import { loadDb, saveDb, type CatalogItem, type Contact, type Db, type Doc, type SavedTemplate } from './src/storage.ts';
 import { printDoc, shareDocPdf } from './src/pdf.ts';
+import { QUOTE_BLOCKS, INVOICE_BLOCKS, type Layout } from './src/layout.ts';
+import { LayoutDesigner, type Tone } from './src/LayoutDesigner.tsx';
+import { Thumb } from './src/Thumb.tsx';
 import { validateEInvoice } from './src/einvoice.ts';
 import { shareEInvoiceXml } from './src/einvoiceShare.ts';
 import PricingScreen from './src/PricingScreen.tsx';
 import type { Seller } from './src/config/seller.ts';
-import { findTemplate, templatesFor, type Template } from './src/templates.ts';
+import { docLayout, findTemplate, templateLayout, templatesFor, type Template } from './src/templates.ts';
+import { getSystemFont, FONT_CONFIG_BY_LANG, type AppLanguage } from './src/typography.ts';
+import { SUPPORTED_LANGUAGES, t } from './src/i18n.ts';
 
-const STATUS_LABEL: Record<Status, string> = { draft: 'Nháp', sent: 'Đã gửi', paid: 'Đã thu' };
-const NEXT_LABEL: Record<Status, string> = { draft: 'Đánh dấu đã gửi', sent: 'Đánh dấu đã thu', paid: '' };
 
 // Apple system colors: gray / orange / green on tinted backgrounds, one set per color scheme.
 const LIGHT = {
@@ -30,16 +33,14 @@ const DARK: Palette = {
   statusBg: { draft: '#2C2C2E', sent: '#3A2A10', paid: '#12301B' },
 };
 
-// SF on iOS; elsewhere fall back to Segoe UI, then Arial.
-const FONT = Platform.select({ ios: 'System', web: "-apple-system, 'SF Pro Text', 'Segoe UI', Arial, sans-serif", default: undefined });
-
-const FILTERS: { key: 'ALL' | DocKind; label: string }[] = [
-  { key: 'ALL', label: 'Tất cả' },
-  { key: 'QUO', label: 'Báo giá' },
-  { key: 'INV', label: 'Phiếu thu' },
-];
-
 type Draft = Omit<Doc, 'createdAt'> & { createdAt?: string };
+
+function savedLayout(t: SavedTemplate): Layout {
+  if (t.layout) return t.layout;
+  const base = t.baseId ? findTemplate(t.baseId) : undefined;
+  if (base) return templateLayout(base);
+  return { locale: 'vi', title: t.kind === 'QUO' ? 'Báo giá' : 'Phiếu thu', footer: '', blocks: [...(t.kind === 'QUO' ? QUOTE_BLOCKS : INVOICE_BLOCKS)], currency: 'VND' };
+}
 
 // Picks an image from the phone library, shows it, and lets the user replace or remove it.
 function ImageSlot({ styles, uri, aspect, empty, onPick, onError }: {
@@ -77,7 +78,24 @@ const VAT_CHOICES = [0, 8, 10];
 const DISCOUNT_CHOICES = [0, 5, 10];
 const newId = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 5);
 
-function blankDraft(db: Db, kind: DocKind, tpl?: Pick<Template, 'id' | 'note' | 'taxPct' | 'items'>): Draft {
+type StartTpl = Pick<Template, 'id' | 'note' | 'taxPct' | 'items'> & { layout?: Layout };
+
+function defaultLayout(kind: DocKind, lang: AppLanguage = 'vi'): Layout {
+  const isQuote = kind === 'QUO';
+  const isEn = lang === 'en';
+  return {
+    locale: isEn ? 'en' : 'vi',
+    title: isQuote ? (isEn ? 'Quotation' : 'Báo giá') : (isEn ? 'Receipt' : 'Phiếu thu'),
+    footer: isQuote
+      ? (isEn ? 'Thank you for your interest.' : 'Cảm ơn quý khách đã quan tâm.')
+      : (isEn ? 'Thank you for your business.' : 'Cảm ơn quý khách đã tin tưởng.'),
+    blocks: [...(isQuote ? QUOTE_BLOCKS : INVOICE_BLOCKS)],
+    currency: isEn ? 'USD' : 'VND',
+  };
+}
+
+function blankDraft(db: Db, kind: DocKind, tpl?: StartTpl): Draft {
+  const lang = db.appLanguage ?? 'vi';
   return {
     id: Date.now().toString(36),
     kind,
@@ -92,6 +110,7 @@ function blankDraft(db: Db, kind: DocKind, tpl?: Pick<Template, 'id' | 'note' | 
     taxPct: tpl?.taxPct ?? 0,
     status: 'draft',
     templateId: tpl?.id,
+    layout: tpl?.layout ?? (tpl ? undefined : defaultLayout(kind, lang)),
   };
 }
 
@@ -151,11 +170,28 @@ export default function App() {
   const [picker, setPicker] = useState<DocKind | null>(null);
   const [showCompany, setShowCompany] = useState(false);
   const [showContacts, setShowContacts] = useState(false);
+  const [showCatalog, setShowCatalog] = useState(false);
+  const [selectedCatFilter, setSelectedCatFilter] = useState('ALL');
+  const [productEditor, setProductEditor] = useState<{
+    id?: string;
+    name: string;
+    category: string;
+    image?: string;
+    listPrice: string;
+    discountPrice: string;
+  } | null>(null);
   const [catalogFor, setCatalogFor] = useState<number | null>(null); // line index the product drop list is filling
   const [openDiscounts, setOpenDiscounts] = useState<Record<number, boolean>>({});
   const [filter, setFilter] = useState<'ALL' | DocKind>('ALL');
+  const [showLayout, setShowLayout] = useState(false); // layout editor for the open document
+  const [tplEditor, setTplEditor] = useState<{ id?: string; kind: DocKind; name: string; layout: Layout } | null>(null);
+  const [market, setMarket] = useState('ALL');
+  const [showSettings, setShowSettings] = useState(false);
   const c = useColorScheme() === 'dark' ? DARK : LIGHT;
-  const styles = useMemo(() => makeStyles(c), [c]);
+  const lang: AppLanguage = db?.appLanguage ?? 'vi';
+  const styles = useMemo(() => makeStyles(c, lang), [c, lang]);
+  const { width: winW } = useWindowDimensions();
+  const tone: Tone = { accent: c.accent, card: c.card, ink: c.text, muted: c.muted, line: c.segTrack, bg: c.bg };
 
   useEffect(() => {
     loadDb().then(setDb);
@@ -167,7 +203,7 @@ export default function App() {
     if (!ok) Alert.alert('Không lưu được', 'Bộ nhớ máy đang lỗi. Thử lại sau.');
   }
 
-  function startNew(kind: DocKind, tpl?: Pick<Template, 'id' | 'note' | 'taxPct' | 'items'>) {
+  function startNew(kind: DocKind, tpl?: StartTpl) {
     if (!db) return;
     setIsNew(true);
     setError('');
@@ -218,6 +254,7 @@ export default function App() {
       note: draft.note,
       items: draft.items.map(it => ({ ...it })),
       baseId: draft.templateId,
+      layout: docLayout(asDoc(draft)),
     };
     await persist({ ...db, templates: [tpl, ...db.templates] });
     Alert.alert('Đã lưu mẫu', 'Mẫu nằm ở mục “Mẫu của tôi” khi tạo mới.');
@@ -233,17 +270,83 @@ export default function App() {
     shareEInvoiceXml(doc, seller).catch(() => Alert.alert('Không xuất được XML'));
   }
 
+  async function saveTplEditor() {
+    if (!db || !tplEditor) return;
+    const name = tplEditor.name.trim() || `Mẫu ${db.templates.length + 1}`;
+    const id = tplEditor.id;
+    const templates = id
+      ? db.templates.map(t => (t.id === id ? { ...t, name, layout: tplEditor.layout } : t))
+      : [{ id: newId(), kind: tplEditor.kind, name, taxPct: 0, note: '', items: [{ name: '', qty: 1, price: 0, discountPct: 0 }], layout: tplEditor.layout }, ...db.templates];
+    await persist({ ...db, templates });
+    setTplEditor(null);
+  }
+
   async function removeTemplate(id: string) {
     if (!db) return;
     await persist({ ...db, templates: db.templates.filter(t => t.id !== id) });
   }
 
-  async function saveToCatalog(i: number) {
+  function openSaveToCatalog(i: number) {
     if (!db || !draft) return;
     const it = draft.items[i];
-    const name = String(it?.name ?? '').trim();
-    if (!name || db.catalog.some(p => p.name === name)) return;
-    await persist({ ...db, catalog: [...db.catalog, { id: newId(), name, price: Number(it.price) || 0 }] });
+    if (!it) return;
+    const name = String(it.name ?? '').trim();
+    const priceVal = Number(it.price) || 0;
+    const discPct = Number(it.discountPct) || 0;
+    let listPrice = priceVal;
+    let discountPrice = 0;
+    if (discPct > 0 && priceVal > 0) {
+      discountPrice = Math.round(priceVal * (1 - discPct / 100));
+    }
+    setProductEditor({
+      name,
+      category: db.categories[0] ?? 'Sản phẩm',
+      image: '',
+      listPrice: listPrice > 0 ? String(listPrice) : '',
+      discountPrice: discountPrice > 0 ? String(discountPrice) : '',
+    });
+  }
+
+  async function saveProductFromEditor() {
+    if (!db || !productEditor) return;
+    const name = productEditor.name.trim();
+    if (!name) {
+      Alert.alert('Thiếu thông tin', 'Vui lòng nhập tên sản phẩm.');
+      return;
+    }
+    const listPrice = Number(productEditor.listPrice) || 0;
+    const discountPrice = Number(productEditor.discountPrice) || 0;
+    const effectivePrice = discountPrice > 0 ? discountPrice : listPrice;
+    const cat = productEditor.category.trim();
+
+    const nextCategories = cat ? addCategoryToList(db.categories, cat) : db.categories;
+
+    const item: CatalogItem = {
+      id: productEditor.id ?? newId(),
+      name,
+      price: effectivePrice,
+      listPrice: listPrice > 0 ? listPrice : undefined,
+      discountPrice: discountPrice > 0 ? discountPrice : undefined,
+      category: cat || undefined,
+      image: productEditor.image || undefined,
+    };
+
+    const nextCatalog = productEditor.id
+      ? db.catalog.map(x => (x.id === productEditor.id ? item : x))
+      : [...db.catalog, item];
+
+    await persist({
+      ...db,
+      catalog: nextCatalog,
+      categories: nextCategories,
+    });
+
+    setProductEditor(null);
+  }
+
+  async function removeProduct(id: string) {
+    if (!db) return;
+    await persist({ ...db, catalog: db.catalog.filter(x => x.id !== id) });
   }
 
   async function saveContact() {
@@ -259,9 +362,25 @@ export default function App() {
     setShowContacts(false);
   }
 
-  function pickProduct(i: number, p: { name: string; price: number }) {
+  function pickProduct(i: number, p: CatalogItem) {
     if (!draft) return;
-    setDraft({ ...draft, items: draft.items.map((it, idx) => (idx === i ? { ...it, name: p.name, price: p.price } : it)) });
+    const pricing = resolveProductPricing(p.listPrice, p.discountPrice, p.price);
+    setDraft({
+      ...draft,
+      items: draft.items.map((it, idx) =>
+        idx === i
+          ? {
+              ...it,
+              name: p.name,
+              price: pricing.effectivePrice,
+              discountPct: pricing.discountPct > 0 ? pricing.discountPct : (it.discountPct ?? 0),
+            }
+          : it
+      ),
+    });
+    if (pricing.discountPct > 0) {
+      setOpenDiscounts(prev => ({ ...prev, [i]: true }));
+    }
     setCatalogFor(null);
   }
 
@@ -285,6 +404,371 @@ export default function App() {
     return (
       <SafeAreaView style={styles.safe}>
         <Text style={styles.muted}>Đang tải…</Text>
+      </SafeAreaView>
+    );
+  }
+
+  const displayedCatalog = db
+    ? db.catalog.filter(p => {
+        if (selectedCatFilter === 'ALL') return true;
+        return (p.category ?? '').trim().toLowerCase() === selectedCatFilter.trim().toLowerCase();
+      })
+    : [];
+
+  function renderProductCard(p: CatalogItem, onPressCard: () => void) {
+    const hasDiscount = Boolean(p.discountPrice && p.discountPrice > 0 && p.listPrice && p.listPrice > p.discountPrice);
+    return (
+      <Pressable
+        key={p.id}
+        style={styles.card}
+        onPress={onPressCard}
+        accessibilityRole="button"
+        accessibilityLabel={p.name}
+      >
+        <View style={styles.listRow}>
+          {p.image ? (
+            <Image source={{ uri: p.image }} style={styles.productThumb} accessibilityLabel={p.name} />
+          ) : (
+            <View style={styles.productThumbPlaceholder}>
+              <Text style={{ fontSize: 20 }}>📦</Text>
+            </View>
+          )}
+          <View style={[styles.flex, { gap: 4 }]}>
+            <Text style={styles.bold}>{p.name}</Text>
+            {!!p.category && (
+              <View style={styles.catBadge}>
+                <Text style={styles.catBadgeText}>{p.category}</Text>
+              </View>
+            )}
+            <View style={styles.row}>
+              {hasDiscount ? (
+                <View style={[styles.row, { flexWrap: 'wrap', gap: 6 }]}>
+                  <Text style={[styles.muted, { textDecorationLine: 'line-through', fontSize: 13 }]}>
+                    {formatVND(p.listPrice!)}
+                  </Text>
+                  <Text style={[styles.bold, { color: c.accent }]}>
+                    {formatVND(p.discountPrice!)}
+                  </Text>
+                  <View style={[styles.pill, { backgroundColor: c.accentSoft }]}>
+                    <Text style={[styles.pillText, { color: c.accent, fontSize: 11 }]}>
+                      -{calcDiscountPct(p.listPrice!, p.discountPrice!)}%
+                    </Text>
+                  </View>
+                </View>
+              ) : (
+                <Text style={styles.bold}>
+                  {formatVND(p.discountPrice || p.listPrice || p.price)}
+                </Text>
+              )}
+            </View>
+          </View>
+          <View style={styles.row}>
+            <Pressable
+              onPress={() => {
+                setProductEditor({
+                  id: p.id,
+                  name: p.name,
+                  category: p.category ?? '',
+                  image: p.image ?? '',
+                  listPrice: p.listPrice ? String(p.listPrice) : (p.price ? String(p.price) : ''),
+                  discountPrice: p.discountPrice ? String(p.discountPrice) : '',
+                });
+              }}
+              style={styles.delSmall}
+              accessibilityRole="button"
+              accessibilityLabel={`Sửa ${p.name}`}
+            >
+              <Text style={styles.link}>✎</Text>
+            </Pressable>
+            <Pressable
+              onPress={() => {
+                Alert.alert('Xóa sản phẩm', `Bạn có chắc muốn xóa "${p.name}"?`, [
+                  { text: 'Hủy', style: 'cancel' },
+                  {
+                    text: 'Xóa',
+                    style: 'destructive',
+                    onPress: () => removeProduct(p.id),
+                  },
+                ]);
+              }}
+              style={styles.delSmall}
+              accessibilityRole="button"
+              accessibilityLabel={`Xóa ${p.name}`}
+            >
+              <Text style={styles.muted}>✕</Text>
+            </Pressable>
+          </View>
+        </View>
+      </Pressable>
+    );
+  }
+
+  function renderProductEditorModal() {
+    if (!db || !productEditor) return null;
+    return (
+      <Modal visible={productEditor !== null} animationType="slide" presentationStyle="pageSheet" onRequestClose={() => setProductEditor(null)}>
+        <SafeAreaView style={styles.safe}>
+          <ScrollView contentContainerStyle={styles.pad} keyboardShouldPersistTaps="handled">
+            <Pressable onPress={() => setProductEditor(null)}>
+              <Text style={styles.link}>← Hủy</Text>
+            </Pressable>
+            <Text style={styles.h1}>{productEditor.id ? t('editProduct', lang) : t('newProduct', lang)}</Text>
+            <Text style={styles.muted}>Điền thông tin sản phẩm và phân loại để lưu vào danh mục dùng lại.</Text>
+
+            {/* Ảnh sản phẩm */}
+            <Text style={styles.label}>{t('productImage', lang)}</Text>
+            <View style={styles.card}>
+              <View style={styles.listRow}>
+                {productEditor.image ? (
+                  <Image source={{ uri: productEditor.image }} style={{ width: 72, height: 72, borderRadius: 12, resizeMode: 'cover' }} accessibilityLabel="Ảnh sản phẩm" />
+                ) : (
+                  <View style={[styles.productThumbPlaceholder, { width: 72, height: 72, borderRadius: 12 }]}>
+                    <Text style={{ fontSize: 32 }}>📷</Text>
+                  </View>
+                )}
+                <View style={[styles.flex, { gap: 8 }]}>
+                  <Pressable
+                    style={styles.ghost}
+                    onPress={async () => {
+                      try {
+                        const uri = await pickImageDataUri([1, 1]);
+                        if (uri) setProductEditor(prev => (prev ? { ...prev, image: uri } : null));
+                      } catch {
+                        Alert.alert('Không chọn được ảnh', 'Vui lòng kiểm tra quyền truy cập thư viện ảnh.');
+                      }
+                    }}
+                    accessibilityRole="button"
+                  >
+                    <Text style={styles.ghostText}>{productEditor.image ? 'Đổi ảnh' : 'Chọn ảnh sản phẩm'}</Text>
+                  </Pressable>
+                  {!!productEditor.image && (
+                    <Pressable
+                      style={styles.ghost}
+                      onPress={() => setProductEditor(prev => (prev ? { ...prev, image: '' } : null))}
+                      accessibilityRole="button"
+                    >
+                      <Text style={styles.ghostText}>Xóa ảnh</Text>
+                    </Pressable>
+                  )}
+                </View>
+              </View>
+            </View>
+
+            {/* Tên sản phẩm */}
+            <Text style={styles.label}>{t('productName', lang)} *</Text>
+            <TextInput
+              style={styles.input}
+              placeholder="VD: Cửa nhôm Xingfa hệ 55"
+              placeholderTextColor={c.muted}
+              value={productEditor.name}
+              onChangeText={v => setProductEditor(prev => (prev ? { ...prev, name: v } : null))}
+            />
+
+            {/* Phân loại / Danh mục */}
+            <Text style={styles.label}>{t('productCategory', lang)}</Text>
+            <Text style={styles.footnote}>Chạm để chọn nhanh danh mục có sẵn:</Text>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginVertical: 4 }}>
+              <View style={styles.row}>
+                {db.categories.map(cat => {
+                  const isSel = (productEditor.category ?? '').trim().toLowerCase() === cat.trim().toLowerCase();
+                  return (
+                    <Pressable
+                      key={cat}
+                      style={[styles.catChip, isSel && styles.catChipActive]}
+                      onPress={() => setProductEditor(prev => (prev ? { ...prev, category: cat } : null))}
+                      accessibilityRole="button"
+                    >
+                      <Text style={[styles.catChipText, isSel && styles.catChipTextActive]}>{cat}</Text>
+                    </Pressable>
+                  );
+                })}
+              </View>
+            </ScrollView>
+
+            <Text style={styles.footnote}>Hoặc nhập tay danh mục mới:</Text>
+            <View style={styles.row}>
+              <TextInput
+                style={[styles.input, styles.flex]}
+                placeholder="Nhập tên phân loại / danh mục..."
+                placeholderTextColor={c.muted}
+                value={productEditor.category}
+                onChangeText={v => setProductEditor(prev => (prev ? { ...prev, category: v } : null))}
+              />
+              {!!productEditor.category.trim() &&
+                !db.categories.some(c => c.trim().toLowerCase() === productEditor.category.trim().toLowerCase()) && (
+                  <Pressable
+                    style={styles.ghost}
+                    onPress={() => {
+                      const updated = addCategoryToList(db.categories, productEditor.category);
+                      persist({ ...db, categories: updated });
+                      Alert.alert('Đã lưu danh mục', `Đã lưu danh mục "${productEditor.category.trim()}" để chọn lại.`);
+                    }}
+                    accessibilityRole="button"
+                  >
+                    <Text style={styles.ghostText}>+ Lưu DM</Text>
+                  </Pressable>
+                )}
+            </View>
+
+            {/* Giá niêm yết */}
+            <Text style={styles.label}>{t('listPrice', lang)} (VNĐ) *</Text>
+            <TextInput
+              style={styles.input}
+              keyboardType="number-pad"
+              placeholder="VD: 500000"
+              placeholderTextColor={c.muted}
+              value={productEditor.listPrice}
+              onChangeText={v => setProductEditor(prev => (prev ? { ...prev, listPrice: v } : null))}
+            />
+            {Number(productEditor.listPrice) > 0 && (
+              <Text style={styles.footnote}>Định dạng: {formatVND(Number(productEditor.listPrice))}</Text>
+            )}
+
+            {/* Giá chiết khấu */}
+            <Text style={styles.label}>{t('discountPrice', lang)} (VNĐ)</Text>
+            <Text style={styles.footnote}>Giá bán ưu đãi sau giảm giá (để trống nếu bán theo giá niêm yết)</Text>
+            <TextInput
+              style={styles.input}
+              keyboardType="number-pad"
+              placeholder="VD: 450000"
+              placeholderTextColor={c.muted}
+              value={productEditor.discountPrice}
+              onChangeText={v => setProductEditor(prev => (prev ? { ...prev, discountPrice: v } : null))}
+            />
+            {Number(productEditor.discountPrice) > 0 && Number(productEditor.listPrice) > 0 && (
+              <Text style={[styles.footnote, { color: c.accent, fontWeight: '600' }]}>
+                {Number(productEditor.discountPrice) < Number(productEditor.listPrice)
+                  ? `Ưu đãi: ${formatVND(Number(productEditor.discountPrice))} (Giảm ${calcDiscountPct(
+                      Number(productEditor.listPrice),
+                      Number(productEditor.discountPrice)
+                    )}%)`
+                  : `Giá bán: ${formatVND(Number(productEditor.discountPrice))}`}
+              </Text>
+            )}
+
+            {/* Nút lưu */}
+            <View style={{ marginTop: 16, gap: 8 }}>
+              <ActionButton
+                styles={styles}
+                color={c.onAccent}
+                label={t('saveProduct', lang)}
+                symbol="square.and.arrow.down"
+                glyph="💾"
+                primary
+                onPress={saveProductFromEditor}
+              />
+              <Pressable style={styles.ghost} onPress={() => setProductEditor(null)} accessibilityRole="button">
+                <Text style={styles.ghostText}>Hủy bỏ</Text>
+              </Pressable>
+            </View>
+          </ScrollView>
+        </SafeAreaView>
+      </Modal>
+    );
+  }
+
+  if (showCatalog) {
+    return (
+      <SafeAreaView style={styles.safe}>
+        <StatusBar style="auto" />
+        <ScrollView contentContainerStyle={styles.pad} keyboardShouldPersistTaps="handled">
+          <Pressable onPress={() => { setShowCatalog(false); setSelectedCatFilter('ALL'); }}>
+            <Text style={styles.link}>← Quay lại</Text>
+          </Pressable>
+          <View style={styles.headerRow}>
+            <Text style={styles.h1}>{t('catalogTitle', lang)}</Text>
+            <Pressable
+              style={styles.ghost}
+              onPress={() =>
+                setProductEditor({
+                  name: '',
+                  category: selectedCatFilter !== 'ALL' ? selectedCatFilter : (db.categories[0] ?? 'Sản phẩm'),
+                  image: '',
+                  listPrice: '',
+                  discountPrice: '',
+                })
+              }
+              accessibilityRole="button"
+            >
+              <Text style={styles.ghostText}>{t('newProduct', lang)}</Text>
+            </Pressable>
+          </View>
+          <Text style={styles.muted}>Quản lý sản phẩm, phân loại danh mục, giá niêm yết và giá chiết khấu.</Text>
+
+          {/* Category Chips Filter */}
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginVertical: 8 }}>
+            <View style={styles.row}>
+              <Pressable
+                style={[styles.catChip, selectedCatFilter === 'ALL' && styles.catChipActive]}
+                onPress={() => setSelectedCatFilter('ALL')}
+                accessibilityRole="button"
+              >
+                <Text style={[styles.catChipText, selectedCatFilter === 'ALL' && styles.catChipTextActive]}>
+                  {t('allCategories', lang)} ({db.catalog.length})
+                </Text>
+              </Pressable>
+              {db.categories.map(cat => {
+                const count = db.catalog.filter(p => (p.category ?? '').trim().toLowerCase() === cat.trim().toLowerCase()).length;
+                const isSel = selectedCatFilter.trim().toLowerCase() === cat.trim().toLowerCase();
+                return (
+                  <Pressable
+                    key={cat}
+                    style={[styles.catChip, isSel && styles.catChipActive]}
+                    onPress={() => setSelectedCatFilter(cat)}
+                    accessibilityRole="button"
+                  >
+                    <Text style={[styles.catChipText, isSel && styles.catChipTextActive]}>
+                      {cat} ({count})
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+          </ScrollView>
+
+          {/* Product List */}
+          {db.catalog.length === 0 && (
+            <View style={[styles.card, { alignItems: 'center', paddingVertical: 32 }]}>
+              <Text style={{ fontSize: 36, marginBottom: 8 }}>📦</Text>
+              <Text style={styles.bold}>{t('noProducts', lang)}</Text>
+              <Text style={[styles.muted, { textAlign: 'center', marginTop: 4 }]}>
+                Tạo sản phẩm để chọn nhanh khi xuất báo giá hoặc phiếu thu.
+              </Text>
+              <Pressable
+                style={[styles.primary, { marginTop: 16, paddingHorizontal: 20 }]}
+                onPress={() =>
+                  setProductEditor({
+                    name: '',
+                    category: db.categories[0] ?? 'Sản phẩm',
+                    image: '',
+                    listPrice: '',
+                    discountPrice: '',
+                  })
+                }
+              >
+                <Text style={styles.primaryText}>+ Tạo sản phẩm đầu tiên</Text>
+              </Pressable>
+            </View>
+          )}
+
+          {db.catalog.length > 0 && displayedCatalog.length === 0 && (
+            <Text style={styles.muted}>Không có sản phẩm nào trong danh mục “{selectedCatFilter}”.</Text>
+          )}
+
+          {displayedCatalog.map(p =>
+            renderProductCard(p, () =>
+              setProductEditor({
+                id: p.id,
+                name: p.name,
+                category: p.category ?? '',
+                image: p.image ?? '',
+                listPrice: p.listPrice ? String(p.listPrice) : (p.price ? String(p.price) : ''),
+                discountPrice: p.discountPrice ? String(p.discountPrice) : '',
+              })
+            )
+          )}
+        </ScrollView>
+        {renderProductEditorModal()}
       </SafeAreaView>
     );
   }
@@ -333,7 +817,10 @@ export default function App() {
           <Text style={styles.label}>Số tài khoản</Text>
           <TextInput style={styles.input} keyboardType="number-pad" value={s.bankAccount} onChangeText={v => setSeller({ bankAccount: v.trim() })} />
           <Text style={styles.label}>Chủ tài khoản</Text>
-          <TextInput style={styles.input} autoCapitalize="characters" value={s.bankHolder} onChangeText={v => setSeller({ bankHolder: v })} />
+          <TextInput style={styles.input} autoCapitalize="characters" value={s.bankHolder} onChangeText={v => setSeller({ bankHolder: v })} placeholder="Viết hoa không dấu" placeholderTextColor={c.muted} />
+          <Text style={styles.label}>Mã QR ngân hàng (ảnh tải từ điện thoại, ưu tiên hơn VietQR tự tạo)</Text>
+          <ImageSlot styles={styles} uri={s.bankQrUri} aspect={[1, 1]} empty="Chưa có ảnh mã QR" onPick={v => setSeller({ bankQrUri: v })} onError={() => Alert.alert('Không chọn được ảnh', 'Cho phép truy cập thư viện ảnh trong Cài đặt của iPhone.')} />
+          <Text style={styles.muted}>Hoặc nhập số tài khoản ở trên để in mã VietQR tự động (chỉ cho ngân hàng Việt Nam).</Text>
         </ScrollView>
       </SafeAreaView>
     );
@@ -436,7 +923,7 @@ export default function App() {
                   )}
                 </View>
                 {!!String(it.name ?? '').trim() && !db.catalog.some(p => p.name === String(it.name).trim()) && (
-                  <Pressable onPress={() => saveToCatalog(i)} style={styles.del} accessibilityRole="button">
+                  <Pressable onPress={() => openSaveToCatalog(i)} style={styles.del} accessibilityRole="button">
                     <Text style={styles.link}>+ Lưu vào danh mục sản phẩm</Text>
                   </Pressable>
                 )}
@@ -454,6 +941,9 @@ export default function App() {
           {!!findTemplate(draft.templateId)?.eInvoice && (
             <ActionButton styles={styles} color={c.accent} label="Xuất XML hóa đơn điện tử" symbol="doc.text" glyph="</>" disabled={noClient} onPress={() => exportEInvoice(asDoc(draft), db.seller)} />
           )}
+          <Pressable style={styles.ghost} onPress={() => setShowLayout(true)} accessibilityRole="button">
+            <Text style={styles.ghostText}>Sửa tiêu đề, phần in và tiền tệ</Text>
+          </Pressable>
           <CheckRow styles={styles} label="In logo và thông tin công ty" on={draft.showSeller !== false} onToggle={() => setDraft({ ...draft, showSeller: draft.showSeller === false })} />
 
           <View style={styles.card}>
@@ -476,6 +966,18 @@ export default function App() {
             <Text style={styles.ghostText}>Lưu làm mẫu của tôi</Text>
           </Pressable>
         </ScrollView>
+        <Modal visible={showLayout} animationType="slide" presentationStyle="pageSheet" onRequestClose={() => setShowLayout(false)}>
+          <SafeAreaView style={styles.safe}>
+            <ScrollView contentContainerStyle={styles.pad}>
+              <Pressable onPress={() => setShowLayout(false)}>
+                <Text style={styles.link}>← Xong</Text>
+              </Pressable>
+              <Text style={styles.h1}>Bố cục chứng từ</Text>
+              <Text style={styles.muted}>Thay đổi chỉ áp dụng cho chứng từ này. Muốn dùng lại, bấm “Lưu làm mẫu của tôi”.</Text>
+              <LayoutDesigner tone={tone} layout={docLayout(asDoc(draft))} onChange={l => setDraft({ ...draft, layout: l })} />
+            </ScrollView>
+          </SafeAreaView>
+        </Modal>
         <Modal visible={showContacts} animationType="slide" presentationStyle="pageSheet" onRequestClose={() => setShowContacts(false)}>
           <SafeAreaView style={styles.safe}>
             <ScrollView contentContainerStyle={styles.pad}>
@@ -500,26 +1002,87 @@ export default function App() {
             </ScrollView>
           </SafeAreaView>
         </Modal>
-        <Modal visible={catalogFor !== null} animationType="slide" presentationStyle="pageSheet" onRequestClose={() => setCatalogFor(null)}>
+        <Modal
+          visible={catalogFor !== null}
+          animationType="slide"
+          presentationStyle="pageSheet"
+          onRequestClose={() => { setCatalogFor(null); setSelectedCatFilter('ALL'); }}
+        >
           <SafeAreaView style={styles.safe}>
-            <ScrollView contentContainerStyle={styles.pad}>
-              <Pressable onPress={() => setCatalogFor(null)}>
-                <Text style={styles.link}>Đóng</Text>
-              </Pressable>
-              <Text style={styles.h1}>Chọn sản phẩm</Text>
-              {db.catalog.length === 0 && <Text style={styles.muted}>Chưa có sản phẩm. Nhập một hạng mục rồi bấm “Lưu vào danh mục sản phẩm”.</Text>}
-              {db.catalog.map(p => (
-                <Pressable key={p.id} style={styles.card} onPress={() => catalogFor !== null && pickProduct(catalogFor, p)}>
-                  <View style={styles.listRow}>
-                    <Text style={[styles.bold, styles.flex]}>{p.name}</Text>
-                    <Text style={styles.muted}>{formatVND(p.price)}</Text>
-                    <Pressable onPress={() => persist({ ...db, catalog: db.catalog.filter(x => x.id !== p.id) })} style={styles.del} accessibilityRole="button" accessibilityLabel={`Xóa ${p.name}`}>
-                      <Text style={styles.body}>✕</Text>
-                    </Pressable>
-                  </View>
+            <ScrollView contentContainerStyle={styles.pad} keyboardShouldPersistTaps="handled">
+              <View style={styles.headerRow}>
+                <Pressable onPress={() => { setCatalogFor(null); setSelectedCatFilter('ALL'); }}>
+                  <Text style={styles.link}>Đóng</Text>
                 </Pressable>
-              ))}
+                <Pressable
+                  style={styles.ghost}
+                  onPress={() =>
+                    setProductEditor({
+                      name: '',
+                      category: selectedCatFilter !== 'ALL' ? selectedCatFilter : (db.categories[0] ?? 'Sản phẩm'),
+                      image: '',
+                      listPrice: '',
+                      discountPrice: '',
+                    })
+                  }
+                  accessibilityRole="button"
+                >
+                  <Text style={styles.ghostText}>{t('newProduct', lang)}</Text>
+                </Pressable>
+              </View>
+              <Text style={styles.h1}>Chọn sản phẩm</Text>
+              <Text style={styles.muted}>Chạm vào sản phẩm để thêm vào dòng hạng mục.</Text>
+
+              {/* Category Filter Chips */}
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginVertical: 8 }}>
+                <View style={styles.row}>
+                  <Pressable
+                    style={[styles.catChip, selectedCatFilter === 'ALL' && styles.catChipActive]}
+                    onPress={() => setSelectedCatFilter('ALL')}
+                    accessibilityRole="button"
+                  >
+                    <Text style={[styles.catChipText, selectedCatFilter === 'ALL' && styles.catChipTextActive]}>
+                      {t('allCategories', lang)} ({db.catalog.length})
+                    </Text>
+                  </Pressable>
+                  {db.categories.map(cat => {
+                    const count = db.catalog.filter(p => (p.category ?? '').trim().toLowerCase() === cat.trim().toLowerCase()).length;
+                    const isSel = selectedCatFilter.trim().toLowerCase() === cat.trim().toLowerCase();
+                    return (
+                      <Pressable
+                        key={cat}
+                        style={[styles.catChip, isSel && styles.catChipActive]}
+                        onPress={() => setSelectedCatFilter(cat)}
+                        accessibilityRole="button"
+                      >
+                        <Text style={[styles.catChipText, isSel && styles.catChipTextActive]}>
+                          {cat} ({count})
+                        </Text>
+                      </Pressable>
+                    );
+                  })}
+                </View>
+              </ScrollView>
+
+              {db.catalog.length === 0 && (
+                <View style={[styles.card, { alignItems: 'center', paddingVertical: 24 }]}>
+                  <Text style={styles.muted}>
+                    Chưa có sản phẩm. Nhập hạng mục rồi bấm “+ Lưu vào danh mục” hoặc bấm “{t('newProduct', lang)}” ở trên.
+                  </Text>
+                </View>
+              )}
+
+              {db.catalog.length > 0 && displayedCatalog.length === 0 && (
+                <Text style={styles.muted}>Không có sản phẩm nào trong danh mục “{selectedCatFilter}”.</Text>
+              )}
+
+              {displayedCatalog.map(p =>
+                renderProductCard(p, () => {
+                  if (catalogFor !== null) pickProduct(catalogFor, p);
+                })
+              )}
             </ScrollView>
+            {renderProductEditorModal()}
           </SafeAreaView>
         </Modal>
         <Modal visible={preview} animationType="slide" presentationStyle="pageSheet" onRequestClose={() => setPreview(false)}>
@@ -560,6 +1123,16 @@ export default function App() {
   }
 
   if (picker) {
+    // Only templates in the app's language; each one is drawn as a picture of the finished form.
+    const langTemplates = templatesFor(picker).filter(tpl => tpl.locale === lang);
+    const countries = ['ALL', ...Array.from(new Set(langTemplates.map(tpl => tpl.country)))];
+    const activeMarket = countries.includes(market) ? market : 'ALL';
+    const builtIn = langTemplates.filter(tpl => activeMarket === 'ALL' || tpl.country === activeMarket);
+    const savedOfKind = db.templates.filter(tpl => tpl.kind === picker && savedLayout(tpl).locale === lang);
+    const cardWidth = Math.floor((winW - 32 - 12) / 2);
+    const gridStyle = { flexDirection: 'row' as const, flexWrap: 'wrap' as const, gap: 12 };
+    const cardStyle = { width: cardWidth, backgroundColor: c.card, borderRadius: 14, padding: 8, gap: 6 };
+    const chipLabel = (m: string) => (m === 'ALL' ? t('filterAll', lang) : m === 'VN' ? 'Việt Nam' : m);
     return (
       <SafeAreaView style={styles.safe}>
         <StatusBar style="auto" />
@@ -567,41 +1140,71 @@ export default function App() {
           <Pressable onPress={() => setPicker(null)}>
             <Text style={styles.link}>← Danh sách</Text>
           </Pressable>
-          <Text style={styles.h1}>Chọn mẫu {picker === 'QUO' ? 'báo giá' : 'phiếu thu'}</Text>
-          {db.templates.some(t => t.kind === picker) && <Text style={styles.label}>Mẫu của tôi</Text>}
-          {db.templates.filter(t => t.kind === picker).map(t => (
-            <View key={t.id} style={styles.card}>
-              <View style={styles.listRow}>
-                <Pressable style={[styles.flex, styles.listRow]} onPress={() => startNew(picker, { ...t, id: t.baseId ?? t.id })}>
-                  <View style={styles.flex}>
-                    <Text style={styles.bold}>{t.name}</Text>
-                    <Text style={styles.muted}>{t.items.length} hạng mục · chỉ cần nhập khách</Text>
-                  </View>
-                  <Text style={styles.muted}>›</Text>
+          <Text style={styles.h1}>{picker === 'QUO' ? t('filterQuo', lang) : t('filterInv', lang)}</Text>
+          <Text style={styles.muted}>Chạm vào hình để chọn. Hình là mẫu đã điền thử với dữ liệu mẫu.</Text>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginVertical: 8 }}>
+            <View style={styles.row}>
+              {countries.map(m => (
+                <Pressable key={m} onPress={() => setMarket(m)} style={[styles.ghost, activeMarket === m && { backgroundColor: c.accent }]} accessibilityRole="button">
+                  <Text style={[styles.ghostText, activeMarket === m && { color: c.onAccent }]}>{chipLabel(m)}</Text>
                 </Pressable>
-                <Pressable onPress={() => removeTemplate(t.id)} style={styles.del} accessibilityRole="button" accessibilityLabel={`Xóa mẫu ${t.name}`}>
-                  <Text style={styles.body}>✕</Text>
-                </Pressable>
-              </View>
+              ))}
             </View>
-          ))}
-          <Text style={styles.label}>Mẫu có sẵn</Text>
-          {templatesFor(picker).map(tpl => (
-            <Pressable key={tpl.id} style={styles.card} onPress={() => startNew(picker, tpl)}>
-              <View style={styles.listRow}>
-                <View style={[styles.swatch, { backgroundColor: tpl.accent }]} />
-                <View style={styles.flex}>
-                  <Text style={styles.bold}>{tpl.name}</Text>
-                  <Text style={styles.muted}>{tpl.hint}</Text>
+          </ScrollView>
+
+          {savedOfKind.length > 0 && <Text style={styles.label}>Mẫu của tôi</Text>}
+          <View style={gridStyle}>
+            {savedOfKind.map(tpl => (
+              <Pressable key={tpl.id} style={cardStyle} onPress={() => startNew(picker, { ...tpl, id: tpl.baseId ?? tpl.id })} accessibilityRole="button" accessibilityLabel={`Chọn mẫu ${tpl.name}`}>
+                <Thumb layout={savedLayout(tpl)} accent={findTemplate(tpl.baseId)?.accent ?? c.accent} width={cardWidth - 16} />
+                <Text style={[styles.bold, { fontSize: 13 }]} numberOfLines={2}>{tpl.name}</Text>
+                <View style={styles.listRow}>
+                  <Pressable onPress={() => setTplEditor({ id: tpl.id, kind: tpl.kind, name: tpl.name, layout: savedLayout(tpl) })} accessibilityRole="button">
+                    <Text style={styles.link}>Sửa ✎</Text>
+                  </Pressable>
+                  <Pressable onPress={() => removeTemplate(tpl.id)} accessibilityRole="button" accessibilityLabel={`Xóa mẫu ${tpl.name}`}>
+                    <Text style={styles.muted}>Xóa</Text>
+                  </Pressable>
                 </View>
-                <Text style={styles.muted}>›</Text>
-              </View>
-            </Pressable>
-          ))}
+              </Pressable>
+            ))}
+          </View>
+
+          {builtIn.length > 0 && <Text style={styles.label}>Mẫu có sẵn ({builtIn.length})</Text>}
+          <View style={gridStyle}>
+            {builtIn.map(tpl => (
+              <Pressable key={tpl.id} style={cardStyle} onPress={() => startNew(picker, { ...tpl, layout: templateLayout(tpl) })} accessibilityRole="button" accessibilityLabel={`Chọn mẫu ${tpl.name}`}>
+                <Thumb layout={templateLayout(tpl)} accent={tpl.accent} width={cardWidth - 16} />
+                <Text style={[styles.bold, { fontSize: 13 }]} numberOfLines={2}>{tpl.title}</Text>
+                <Text style={[styles.muted, { fontSize: 11 }]} numberOfLines={2}>{tpl.hint}</Text>
+              </Pressable>
+            ))}
+          </View>
+          {savedOfKind.length + builtIn.length === 0 && (
+            <Text style={styles.muted}>Chưa có mẫu cho ngôn ngữ này. Tạo mẫu mới hoặc bắt đầu từ trang trống.</Text>
+          )}
+
+          <Pressable style={styles.ghost} onPress={() => setTplEditor({ kind: picker, name: '', layout: defaultLayout(picker, lang) })} accessibilityRole="button">
+            <Text style={styles.ghostText}>+ Tạo mẫu mới (sắp xếp phần in)</Text>
+          </Pressable>
           <Pressable style={styles.ghost} onPress={() => startNew(picker)}>
             <Text style={styles.ghostText}>Bắt đầu từ trang trống</Text>
           </Pressable>
         </ScrollView>
+        <Modal visible={tplEditor !== null} animationType="slide" presentationStyle="pageSheet" onRequestClose={() => setTplEditor(null)}>
+          {tplEditor && (
+            <SafeAreaView style={styles.safe}>
+              <ScrollView contentContainerStyle={styles.pad}>
+                <Pressable onPress={() => setTplEditor(null)}>
+                  <Text style={styles.link}>← Hủy</Text>
+                </Pressable>
+                <Text style={styles.h1}>{tplEditor.id ? 'Sửa mẫu' : 'Tạo mẫu mới'}</Text>
+                <LayoutDesigner tone={tone} layout={tplEditor.layout} onChange={l => setTplEditor({ ...tplEditor, layout: l })} name={tplEditor.name} onName={v => setTplEditor({ ...tplEditor, name: v })} />
+                <ActionButton styles={styles} color={c.onAccent} label="Lưu mẫu" symbol="square.and.arrow.down" glyph="💾" primary onPress={saveTplEditor} />
+              </ScrollView>
+            </SafeAreaView>
+          )}
+        </Modal>
       </SafeAreaView>
     );
   }
@@ -610,54 +1213,90 @@ export default function App() {
   const count = (s: Status) => db.docs.filter(d => d.status === s).length;
   const outstanding = db.docs.filter(d => d.kind === 'INV' && d.status === 'sent').reduce((sum, d) => sum + documentTotals(d).total, 0);
 
+  const statusLabel = (s: Status) => {
+    if (s === 'draft') return t('statusDraft', lang);
+    if (s === 'sent') return t('statusSent', lang);
+    return t('statusPaid', lang);
+  };
+  const nextLabel = (s: Status) => {
+    if (s === 'draft') return t('markSent', lang);
+    if (s === 'sent') return t('markPaid', lang);
+    return '';
+  };
+  const filters: { key: 'ALL' | DocKind; label: string }[] = [
+    { key: 'ALL', label: t('filterAll', lang) },
+    { key: 'QUO', label: t('filterQuo', lang) },
+    { key: 'INV', label: t('filterInv', lang) },
+  ];
+
   return (
     <SafeAreaView style={styles.safe}>
       <StatusBar style="auto" />
       <ScrollView contentContainerStyle={styles.pad}>
-        <Text style={styles.h1}>Báo giá & Phiếu thu</Text>
-        <View style={styles.row}>
-          <Pressable style={[styles.primary, styles.flex]} onPress={() => setPicker('QUO')}>
-            <Text style={styles.primaryText}>+ Báo giá</Text>
-          </Pressable>
-          <Pressable style={[styles.primary, styles.flex]} onPress={() => setPicker('INV')}>
-            <Text style={styles.primaryText}>+ Phiếu thu</Text>
+        <View style={styles.headerRow}>
+          <Text style={styles.h1}>{t('appTitle', lang)}</Text>
+          <Pressable
+            style={styles.iconBtn}
+            onPress={() => setShowSettings(true)}
+            accessibilityRole="button"
+            accessibilityLabel={t('settings', lang)}
+          >
+            <SymbolView name="gearshape" size={22} tintColor={c.accent} fallback={<Text style={{ fontSize: 22 }}>⚙️</Text>} />
           </Pressable>
         </View>
+
+        <View style={styles.row}>
+          <Pressable style={[styles.primary, styles.flex]} onPress={() => setPicker('QUO')}>
+            <Text style={styles.primaryText}>{t('newQuote', lang)}</Text>
+          </Pressable>
+          <Pressable style={[styles.primary, styles.flex]} onPress={() => setPicker('INV')}>
+            <Text style={styles.primaryText}>{t('newInvoice', lang)}</Text>
+          </Pressable>
+        </View>
+
         {db.docs.length > 0 && (
           <View style={styles.card}>
             <View style={styles.row}>
               {(['draft', 'sent', 'paid'] as Status[]).map(s => (
                 <View key={s} style={[styles.stat, { backgroundColor: c.statusBg[s] }]}>
                   <Text style={[styles.statNum, { color: c.statusFg[s] }]}>{count(s)}</Text>
-                  <Text style={[styles.pillText, { color: c.statusFg[s] }]}>{STATUS_LABEL[s]}</Text>
+                  <Text style={[styles.pillText, { color: c.statusFg[s] }]}>{statusLabel(s)}</Text>
                 </View>
               ))}
             </View>
-            {outstanding > 0 && <Text style={styles.muted}>Phiếu thu chờ thu: {formatVND(outstanding)}</Text>}
+            {outstanding > 0 && <Text style={styles.muted}>{t('pendingReceipts', lang)} {formatVND(outstanding)}</Text>}
           </View>
         )}
+
         <View style={styles.row}>
-          <Pressable style={[styles.ghost, styles.flex]} onPress={() => setShowPricing(true)}>
-            <Text style={styles.ghostText}>Bảng giá</Text>
+          <Pressable style={[styles.ghost, styles.flex]} onPress={() => setShowSettings(true)}>
+            <Text style={styles.ghostText}>{t('settings', lang)}</Text>
+          </Pressable>
+          <Pressable style={[styles.ghost, styles.flex]} onPress={() => setShowCatalog(true)}>
+            <Text style={styles.ghostText}>{t('catalogButton', lang)}</Text>
           </Pressable>
           <Pressable style={[styles.ghost, styles.flex]} onPress={() => setShowCompany(true)}>
-            <Text style={styles.ghostText}>Thông tin công ty</Text>
+            <Text style={styles.ghostText}>{t('companyInfo', lang)}</Text>
           </Pressable>
         </View>
-        {db.docs.length === 0 && <Text style={styles.muted}>Chưa có chứng từ nào. Bấm “+ Báo giá” để bắt đầu.</Text>}
+
+        {db.docs.length === 0 && <Text style={styles.muted}>{t('noDocs', lang)}</Text>}
+
         {db.docs.length > 0 && (
           <View style={styles.segment}>
-            {FILTERS.map(f => (
+            {filters.map(f => (
               <Pressable key={f.key} style={[styles.segItem, filter === f.key && styles.segActive]} onPress={() => setFilter(f.key)}>
                 <Text style={[styles.segText, filter === f.key && styles.segTextActive]}>{f.label}</Text>
               </Pressable>
             ))}
           </View>
         )}
-        {db.docs.length > 0 && shown.length === 0 && <Text style={styles.muted}>Không có chứng từ nào trong mục này.</Text>}
+
+        {db.docs.length > 0 && shown.length === 0 && <Text style={styles.muted}>{t('noDocsFilter', lang)}</Text>}
+
         {shown.map(d => {
-          const t = documentTotals(d);
-          const next = NEXT_LABEL[d.status];
+          const totals = documentTotals(d);
+          const next = nextLabel(d.status);
           return (
             <View key={d.id} style={styles.card}>
               <Pressable style={styles.listRow} onPress={() => openDoc(d)}>
@@ -667,9 +1306,9 @@ export default function App() {
                   {!!findTemplate(d.templateId) && <Text style={[styles.pillText, { color: findTemplate(d.templateId)?.accent }]}>{findTemplate(d.templateId)?.name}</Text>}
                 </View>
                 <View style={styles.listRight}>
-                  <Text style={styles.bold}>{formatVND(t.total)}</Text>
+                  <Text style={styles.bold}>{formatVND(totals.total)}</Text>
                   <View style={[styles.pill, { backgroundColor: c.statusBg[d.status] }]}>
-                    <Text style={[styles.pillText, { color: c.statusFg[d.status] }]}>{STATUS_LABEL[d.status]}</Text>
+                    <Text style={[styles.pillText, { color: c.statusFg[d.status] }]}>{statusLabel(d.status)}</Text>
                   </View>
                 </View>
               </Pressable>
@@ -680,39 +1319,182 @@ export default function App() {
               )}
               {d.kind === 'QUO' && !d.convertedTo && (
                 <Pressable style={styles.ghost} onPress={() => convertToInvoice(d)}>
-                  <Text style={styles.ghostText}>Chuyển thành phiếu thu</Text>
+                  <Text style={styles.ghostText}>{t('convertToInvoice', lang)}</Text>
                 </Pressable>
               )}
             </View>
           );
         })}
       </ScrollView>
+
+      {/* Settings Modal */}
+      <Modal visible={showSettings} animationType="slide" presentationStyle="pageSheet" onRequestClose={() => setShowSettings(false)}>
+        <SafeAreaView style={styles.safe}>
+          <ScrollView contentContainerStyle={styles.pad}>
+            <Pressable onPress={() => setShowSettings(false)}>
+              <Text style={styles.link}>{t('done', lang)}</Text>
+            </Pressable>
+            <Text style={styles.h1}>{t('settingsTitle', lang)}</Text>
+            <Text style={styles.muted}>{t('settingsSubtitle', lang)}</Text>
+
+            <View style={styles.settingsSection}>
+              <Text style={styles.sectionHeader}>{t('sectionLanguage', lang)}</Text>
+              <View style={styles.settingsCard}>
+                {SUPPORTED_LANGUAGES.map((item, idx) => {
+                  const isSelected = item.code === lang;
+                  return (
+                    <View key={item.code}>
+                      {idx > 0 && <View style={styles.settingsDivider} />}
+                      <Pressable
+                        style={[styles.settingsRow, isSelected && styles.settingsRowSelected]}
+                        onPress={() => persist({ ...db, appLanguage: item.code })}
+                        accessibilityRole="radio"
+                        accessibilityState={{ selected: isSelected }}
+                      >
+                        <Text style={{ fontSize: 24 }}>{item.flag}</Text>
+                        <View style={styles.flex}>
+                          <Text style={styles.bold}>{item.name}</Text>
+                          <Text style={styles.muted}>{item.subtitle}</Text>
+                        </View>
+                        {isSelected && <Text style={{ color: c.accent, fontSize: 18, fontWeight: '700' }}>✓</Text>}
+                      </Pressable>
+                    </View>
+                  );
+                })}
+              </View>
+              <Text style={styles.footnote}>{t('fontConfigDesc', lang)}</Text>
+            </View>
+
+            <View style={styles.settingsSection}>
+              <Text style={styles.sectionHeader}>{t('sectionManagement', lang)}</Text>
+              <View style={styles.settingsCard}>
+                <Pressable
+                  style={styles.settingsRow}
+                  onPress={() => { setShowSettings(false); setShowCompany(true); }}
+                  accessibilityRole="button"
+                >
+                  <SymbolView name="building.2" size={22} tintColor={c.accent} fallback={<Text style={{ fontSize: 20 }}>🏢</Text>} />
+                  <View style={styles.flex}>
+                    <Text style={styles.bold}>{t('companyButton', lang)}</Text>
+                    <Text style={styles.muted}>{t('companyButtonHint', lang)}</Text>
+                  </View>
+                  <Text style={styles.muted}>›</Text>
+                </Pressable>
+                <View style={styles.settingsDivider} />
+                <Pressable
+                  style={styles.settingsRow}
+                  onPress={() => { setShowSettings(false); setShowCatalog(true); }}
+                  accessibilityRole="button"
+                >
+                  <SymbolView name="cube.box" size={22} tintColor={c.accent} fallback={<Text style={{ fontSize: 20 }}>📦</Text>} />
+                  <View style={styles.flex}>
+                    <Text style={styles.bold}>{t('catalogButton', lang)}</Text>
+                    <Text style={styles.muted}>{t('catalogButtonHint', lang)}</Text>
+                  </View>
+                  <Text style={styles.muted}>›</Text>
+                </Pressable>
+                <View style={styles.settingsDivider} />
+                <Pressable
+                  style={styles.settingsRow}
+                  onPress={() => { setShowSettings(false); setShowPricing(true); }}
+                  accessibilityRole="button"
+                >
+                  <SymbolView name="creditcard" size={22} tintColor={c.accent} fallback={<Text style={{ fontSize: 20 }}>💳</Text>} />
+                  <View style={styles.flex}>
+                    <Text style={styles.bold}>{t('pricingButton', lang)}</Text>
+                    <Text style={styles.muted}>{t('pricingButtonHint', lang)}</Text>
+                  </View>
+                  <Text style={styles.muted}>›</Text>
+                </Pressable>
+              </View>
+            </View>
+
+            <View style={styles.settingsSection}>
+              <Text style={styles.sectionHeader}>{t('sectionAbout', lang)}</Text>
+              <View style={styles.card}>
+                <Text style={styles.body}>{t('aboutAppleDesc', lang)}</Text>
+              </View>
+            </View>
+          </ScrollView>
+        </SafeAreaView>
+      </Modal>
+
+      {/* Startup Language Selection Modal */}
+      <Modal visible={!db.hasSelectedLanguage} animationType="fade" transparent={false}>
+        <SafeAreaView style={styles.safe}>
+          <ScrollView contentContainerStyle={[styles.pad, { justifyContent: 'center', minHeight: '100%' }]}>
+            <View style={styles.welcomeModal}>
+              <View style={styles.welcomeBadge}>
+                <SymbolView name="globe" size={32} tintColor={c.accent} fallback={<Text style={{ fontSize: 32 }}>🌐</Text>} />
+              </View>
+              <Text style={[styles.h1, { textAlign: 'center' }]}>{t('welcomeTitle', lang)}</Text>
+              <Text style={[styles.muted, { textAlign: 'center', marginBottom: 16 }]}>{t('welcomeSubtitle', lang)}</Text>
+
+              <View style={[styles.settingsCard, { width: '100%', marginBottom: 16 }]}>
+                {SUPPORTED_LANGUAGES.map((item, idx) => {
+                  const isSelected = item.code === lang;
+                  return (
+                    <View key={item.code}>
+                      {idx > 0 && <View style={styles.settingsDivider} />}
+                      <Pressable
+                        style={[styles.settingsRow, isSelected && styles.settingsRowSelected]}
+                        onPress={() => persist({ ...db, appLanguage: item.code })}
+                        accessibilityRole="radio"
+                        accessibilityState={{ selected: isSelected }}
+                      >
+                        <Text style={{ fontSize: 24 }}>{item.flag}</Text>
+                        <View style={styles.flex}>
+                          <Text style={styles.bold}>{item.name}</Text>
+                          <Text style={styles.muted}>{item.subtitle}</Text>
+                        </View>
+                        {isSelected && <Text style={{ color: c.accent, fontSize: 18, fontWeight: '700' }}>✓</Text>}
+                      </Pressable>
+                    </View>
+                  );
+                })}
+              </View>
+
+              <Pressable
+                style={[styles.primary, { width: '100%' }]}
+                onPress={() => persist({ ...db, hasSelectedLanguage: true })}
+                accessibilityRole="button"
+              >
+                <Text style={styles.primaryText}>{t('getStarted', lang)}</Text>
+              </Pressable>
+            </View>
+          </ScrollView>
+        </SafeAreaView>
+      </Modal>
     </SafeAreaView>
   );
 }
 
 // Spacing on an 8pt grid (4 only for the inner gutter of the segmented control), tap targets >= 44pt, fully rounded buttons.
-const makeStyles = (c: Palette) =>
-  StyleSheet.create({
+const makeStyles = (c: Palette, lang: AppLanguage = 'vi') => {
+  const font = getSystemFont(lang, Platform.OS);
+  const cfg = FONT_CONFIG_BY_LANG[lang] ?? FONT_CONFIG_BY_LANG.vi;
+  return StyleSheet.create({
     safe: { flex: 1, backgroundColor: c.bg },
     pad: { padding: 16, gap: 8 },
-    h1: { fontFamily: FONT, fontSize: 34, fontWeight: '700', letterSpacing: 0.4, color: c.text, marginTop: 8, marginBottom: 8 },
-    label: { fontFamily: FONT, fontSize: 13, color: c.muted, marginTop: 8, marginLeft: 8 },
-    body: { fontFamily: FONT, fontSize: 17, color: c.text },
-    big: { fontFamily: FONT, fontSize: 20, fontWeight: '700', color: c.text, marginTop: 8 },
-    bold: { fontFamily: FONT, fontSize: 17, fontWeight: '600', color: c.text },
-    muted: { fontFamily: FONT, fontSize: 15, color: c.muted },
-    link: { fontFamily: FONT, color: c.accent, fontSize: 17, minHeight: 48, paddingVertical: 8, textAlignVertical: 'center' },
-    error: { fontFamily: FONT, color: c.error, fontSize: 13 },
-    input: { fontFamily: FONT, backgroundColor: c.field, borderRadius: 12, paddingHorizontal: 16, paddingVertical: 16, fontSize: 17, color: c.text },
+    headerRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+    iconBtn: { minWidth: 44, minHeight: 44, justifyContent: 'center', alignItems: 'center' },
+    h1: { fontFamily: font, fontSize: 34, fontWeight: '700', letterSpacing: 0.37, color: c.text, marginTop: 8, marginBottom: 8 },
+    label: { fontFamily: font, fontSize: 13, color: c.muted, marginTop: 8, marginLeft: 8 },
+    body: { fontFamily: font, fontSize: 17, color: c.text, lineHeight: Math.round(17 * cfg.lineHeightFactor) },
+    big: { fontFamily: font, fontSize: 20, fontWeight: '700', color: c.text, marginTop: 8 },
+    bold: { fontFamily: font, fontSize: 17, fontWeight: '600', color: c.text, lineHeight: Math.round(17 * cfg.lineHeightFactor) },
+    muted: { fontFamily: font, fontSize: 15, color: c.muted, lineHeight: Math.round(15 * cfg.lineHeightFactor) },
+    link: { fontFamily: font, color: c.accent, fontSize: 17, minHeight: 48, paddingVertical: 8, textAlignVertical: 'center' },
+    error: { fontFamily: font, color: c.error, fontSize: 13 },
+    input: { fontFamily: font, backgroundColor: c.field, borderRadius: 12, paddingHorizontal: 16, paddingVertical: 16, fontSize: 17, color: c.text },
     row: { flexDirection: 'row', gap: 8, alignItems: 'center' },
     flex: { flex: 1 },
-    small: { fontFamily: FONT, width: 64, backgroundColor: c.field, borderRadius: 12, paddingHorizontal: 8, paddingVertical: 16, fontSize: 17, color: c.text },
-    mid: { fontFamily: FONT, width: 104, backgroundColor: c.field, borderRadius: 12, paddingHorizontal: 8, paddingVertical: 16, fontSize: 17, color: c.text },
+    small: { fontFamily: font, width: 64, backgroundColor: c.field, borderRadius: 12, paddingHorizontal: 8, paddingVertical: 16, fontSize: 17, color: c.text },
+    mid: { fontFamily: font, width: 104, backgroundColor: c.field, borderRadius: 12, paddingHorizontal: 8, paddingVertical: 16, fontSize: 17, color: c.text },
     itemBox: { gap: 8, paddingBottom: 8 },
     chip: { flex: 1, minHeight: 48, borderRadius: 12, alignItems: 'center', justifyContent: 'center', backgroundColor: c.field },
     chipOn: { backgroundColor: c.accent },
-    chipText: { fontFamily: FONT, fontSize: 17, color: c.text },
+    chipText: { fontFamily: font, fontSize: 17, color: c.text },
     chipTextOn: { color: c.onAccent, fontWeight: '600' },
     checkRow: { flexDirection: 'row', alignItems: 'center', gap: 16, minHeight: 48 },
     box: { width: 28, height: 28, borderRadius: 8, borderWidth: 2, borderColor: c.muted, alignItems: 'center', justifyContent: 'center' },
@@ -721,30 +1503,48 @@ const makeStyles = (c: Palette) =>
     del: { minWidth: 48, minHeight: 48, alignItems: 'center', justifyContent: 'center' },
     delSmall: { minWidth: 36, minHeight: 48, alignItems: 'center', justifyContent: 'center' },
     ckBtn: { minHeight: 48, paddingHorizontal: 12, borderRadius: 12, backgroundColor: c.accentSoft, alignItems: 'center', justifyContent: 'center' },
-    ckBtnText: { fontFamily: FONT, fontSize: 15, fontWeight: '600', color: c.accent },
+    ckBtnText: { fontFamily: font, fontSize: 15, fontWeight: '600', color: c.accent },
     card: { backgroundColor: c.card, borderRadius: 16, padding: 16, gap: 8 },
     listRow: { flexDirection: 'row', alignItems: 'center', gap: 16, minHeight: 48 },
     listRight: { alignItems: 'flex-end', gap: 8 },
     swatch: { width: 8, alignSelf: 'stretch', borderRadius: 4, minHeight: 40 },
     stat: { flex: 1, borderRadius: 16, paddingVertical: 8, alignItems: 'center' },
-    statNum: { fontFamily: FONT, fontSize: 28, fontWeight: '700' },
+    statNum: { fontFamily: font, fontSize: 28, fontWeight: '700' },
     pill: { borderRadius: 100, paddingHorizontal: 8, paddingVertical: 4 },
-    pillText: { fontFamily: FONT, fontSize: 13, fontWeight: '600' },
+    pillText: { fontFamily: font, fontSize: 13, fontWeight: '600' },
     segment: { flexDirection: 'row', backgroundColor: c.segTrack, borderRadius: 24, padding: 4 },
     segItem: { flex: 1, minHeight: 44, borderRadius: 20, alignItems: 'center', justifyContent: 'center' },
     segActive: { backgroundColor: c.segActive },
-    segText: { fontFamily: FONT, fontSize: 15, color: c.segText },
+    segText: { fontFamily: font, fontSize: 15, color: c.segText },
     segTextActive: { fontWeight: '600', color: c.text },
     primary: { backgroundColor: c.accent, borderRadius: 12, minHeight: 48, justifyContent: 'center', alignItems: 'center' },
-    primaryText: { fontFamily: FONT, color: c.onAccent, fontSize: 17, fontWeight: '600' },
+    primaryText: { fontFamily: font, color: c.onAccent, fontSize: 17, fontWeight: '600' },
     ghost: { backgroundColor: c.accentSoft, borderRadius: 12, minHeight: 48, justifyContent: 'center', alignItems: 'center' },
-    ghostText: { fontFamily: FONT, color: c.accent, fontSize: 17 },
+    ghostText: { fontFamily: font, color: c.accent, fontSize: 17 },
     actionBtn: { flexDirection: 'row', gap: 8 },
     dimmed: { opacity: 0.4 },
     paper: { backgroundColor: '#FFFFFF', borderRadius: 16, padding: 24, gap: 8 },
-    paperTitle: { fontFamily: FONT, fontSize: 34, fontWeight: '700', color: c.accent },
-    paperText: { fontFamily: FONT, fontSize: 15, color: '#1D1D1F' },
-    paperBold: { fontFamily: FONT, fontSize: 17, fontWeight: '600', color: '#1D1D1F' },
-    paperMuted: { fontFamily: FONT, fontSize: 15, color: '#6E6E73' },
+    paperTitle: { fontFamily: font, fontSize: 34, fontWeight: '700', color: c.accent },
+    paperText: { fontFamily: font, fontSize: 15, color: '#1D1D1F' },
+    paperBold: { fontFamily: font, fontSize: 17, fontWeight: '600', color: '#1D1D1F' },
+    paperMuted: { fontFamily: font, fontSize: 15, color: '#6E6E73' },
     paperRow: { flexDirection: 'row', gap: 8, justifyContent: 'space-between' },
+    settingsSection: { marginTop: 12, gap: 6 },
+    sectionHeader: { fontFamily: font, fontSize: 13, fontWeight: '600', color: c.muted, marginLeft: 8, textTransform: 'uppercase', letterSpacing: 0.2 },
+    settingsCard: { backgroundColor: c.card, borderRadius: 16, overflow: 'hidden' },
+    settingsRow: { flexDirection: 'row', alignItems: 'center', minHeight: 52, paddingHorizontal: 16, paddingVertical: 12, gap: 12 },
+    settingsRowSelected: { backgroundColor: c.accentSoft },
+    settingsDivider: { height: StyleSheet.hairlineWidth, backgroundColor: c.segTrack, marginLeft: 52 },
+    footnote: { fontFamily: font, fontSize: 13, color: c.muted, marginHorizontal: 8, marginTop: 4, lineHeight: 18 },
+    catBadge: { alignSelf: 'flex-start', backgroundColor: c.segTrack, borderRadius: 6, paddingHorizontal: 6, paddingVertical: 2 },
+    catBadgeText: { fontFamily: font, fontSize: 12, color: c.muted, fontWeight: '500' },
+    catChip: { paddingHorizontal: 12, paddingVertical: 8, borderRadius: 12, backgroundColor: c.field, minHeight: 36, justifyContent: 'center', alignItems: 'center' },
+    catChipActive: { backgroundColor: c.accent },
+    catChipText: { fontFamily: font, fontSize: 14, color: c.text },
+    catChipTextActive: { color: c.onAccent, fontWeight: '600' },
+    productThumb: { width: 48, height: 48, borderRadius: 8, resizeMode: 'cover' },
+    productThumbPlaceholder: { width: 48, height: 48, borderRadius: 8, backgroundColor: c.segTrack, alignItems: 'center', justifyContent: 'center' },
+    welcomeModal: { padding: 24, alignItems: 'center', gap: 16 },
+    welcomeBadge: { width: 64, height: 64, borderRadius: 32, backgroundColor: c.accentSoft, justifyContent: 'center', alignItems: 'center', marginBottom: 4 },
   });
+};

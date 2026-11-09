@@ -4,7 +4,8 @@ import { PLANS, formatUsdPerYear } from './config/pricing.ts';
 // Subset of the App palette (light or dark) used by this screen.
 type Colors = { text: string; muted: string; card: string; accent: string; onAccent: string };
 
-export default function PricingScreen({ onBack, colors }: { onBack: () => void; colors: Colors }) {
+export default function PricingScreen({ onBack, colors, font }: { onBack: () => void; colors: Colors; font?: string }) {
+  const styles = makePricingStyles(font);
   return (
     <ScrollView contentContainerStyle={styles.pad}>
       <Pressable onPress={onBack}>
@@ -30,14 +31,15 @@ export default function PricingScreen({ onBack, colors }: { onBack: () => void; 
   );
 }
 
-const styles = StyleSheet.create({
-  pad: { padding: 16, gap: 12 },
-  h1: { fontSize: 34, fontWeight: '700', letterSpacing: 0.4, marginTop: 8, marginBottom: 4 },
-  link: { fontSize: 17, minHeight: 44, paddingVertical: 10 },
-  card: { borderRadius: 14, padding: 16, gap: 10 },
-  name: { fontSize: 17, fontWeight: '600' },
-  price: { fontSize: 20, fontWeight: '700' },
-  muted: { fontSize: 15 },
-  primary: { borderRadius: 12, minHeight: 50, justifyContent: 'center', alignItems: 'center' },
-  primaryText: { fontSize: 17, fontWeight: '600' },
-});
+const makePricingStyles = (font?: string) =>
+  StyleSheet.create({
+    pad: { padding: 16, gap: 12 },
+    h1: { fontFamily: font, fontSize: 34, fontWeight: '700', letterSpacing: 0.4, marginTop: 8, marginBottom: 4 },
+    link: { fontFamily: font, fontSize: 17, minHeight: 44, paddingVertical: 10 },
+    card: { borderRadius: 14, padding: 16, gap: 10 },
+    name: { fontFamily: font, fontSize: 17, fontWeight: '600' },
+    price: { fontFamily: font, fontSize: 20, fontWeight: '700' },
+    muted: { fontFamily: font, fontSize: 15 },
+    primary: { borderRadius: 12, minHeight: 50, justifyContent: 'center', alignItems: 'center' },
+    primaryText: { fontFamily: font, fontSize: 17, fontWeight: '600' },
+  });

@@ -136,3 +136,54 @@ export function amountInWordsEn(n: number, currency = 'VND'): string {
   const text = `${v < 0 ? 'minus ' : ''}${parts.filter(Boolean).join(' ')} ${currency} only.`;
   return text.charAt(0).toUpperCase() + text.slice(1);
 }
+
+// Calculate discount percent from list price and discount price (0 - 100)
+export function calcDiscountPct(listPrice: number, discountPrice: number): number {
+  const lp = Math.max(Number(listPrice) || 0, 0);
+  const dp = Math.max(Number(discountPrice) || 0, 0);
+  if (lp <= 0 || dp <= 0 || dp >= lp) return 0;
+  return round2(((lp - dp) / lp) * 100);
+}
+
+// Add a category to the list if not already present (case-insensitive check, trimmed)
+export function addCategoryToList(categories: string[], newCat: string): string[] {
+  const trimmed = String(newCat ?? '').trim();
+  if (!trimmed) return categories;
+  if (categories.some(c => c.trim().toLowerCase() === trimmed.toLowerCase())) {
+    return categories;
+  }
+  return [...categories, trimmed];
+}
+
+// Remove category from list
+export function removeCategoryFromList(categories: string[], catToRemove: string): string[] {
+  const target = String(catToRemove ?? '').trim().toLowerCase();
+  return categories.filter(c => c.trim().toLowerCase() !== target);
+}
+
+export type ProductPricing = {
+  effectivePrice: number;
+  discountPct: number;
+};
+
+// Determines effective price and discount percent for adding a product to a quote/invoice
+export function resolveProductPricing(listPrice?: number, discountPrice?: number, legacyPrice?: number): ProductPricing {
+  const lp = Math.max(Number(listPrice) || 0, 0);
+  const dp = Math.max(Number(discountPrice) || 0, 0);
+  const leg = Math.max(Number(legacyPrice) || 0, 0);
+
+  if (lp > 0 && dp > 0 && dp < lp) {
+    return {
+      effectivePrice: lp,
+      discountPct: calcDiscountPct(lp, dp),
+    };
+  }
+  if (dp > 0) {
+    return { effectivePrice: dp, discountPct: 0 };
+  }
+  if (lp > 0) {
+    return { effectivePrice: lp, discountPct: 0 };
+  }
+  return { effectivePrice: leg, discountPct: 0 };
+}
+
