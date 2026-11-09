@@ -1213,6 +1213,10 @@ export default function App() {
   const count = (s: Status) => db.docs.filter(d => d.status === s).length;
   const outstanding = db.docs.filter(d => d.kind === 'INV' && d.status === 'sent').reduce((sum, d) => sum + documentTotals(d).total, 0);
 
+  const pendingQuotes = db.docs
+    .filter(d => d.kind === 'QUO' && d.status === 'sent' && !d.convertedTo)
+    .sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+
   const statusLabel = (s: Status) => {
     if (s === 'draft') return t('statusDraft', lang);
     if (s === 'sent') return t('statusSent', lang);
@@ -1243,6 +1247,31 @@ export default function App() {
           >
             <SymbolView name="gearshape" size={22} tintColor={c.accent} fallback={<Text style={{ fontSize: 22 }}>⚙️</Text>} />
           </Pressable>
+        </View>
+
+        {/* Napi Chốt: báo giá đã gửi mà khách chưa chốt, báo giá nào gửi lâu nhất xếp đầu, chốt xong là ra phiếu thu ngay. */}
+        <View style={styles.card}>
+          <Text style={styles.bold}>{lang === 'en' ? 'Quotes to close' : 'Báo giá cần chốt'}</Text>
+          {pendingQuotes.length === 0 && (
+            <Text style={styles.muted}>
+              {lang === 'en' ? 'Quotes you mark as sent show up here, oldest first, so none is forgotten.' : 'Báo giá đã gửi mà khách chưa chốt sẽ hiện ở đây, cũ nhất lên đầu, để không bỏ sót khách.'}
+            </Text>
+          )}
+          {pendingQuotes.slice(0, 3).map(q => {
+            const days = Math.max(0, Math.floor((new Date().getTime() - new Date(q.createdAt).getTime()) / 86400000));
+            return (
+              <View key={q.id} style={styles.listRow}>
+                <Pressable style={styles.flex} onPress={() => openDoc(q)} accessibilityRole="button">
+                  <Text style={styles.bold}>{q.client}</Text>
+                  <Text style={styles.muted}>{q.no} · {formatVND(documentTotals(q).total)} · {lang === 'en' ? `${days} days ago` : `${days} ngày trước`}</Text>
+                </Pressable>
+                <Pressable style={styles.ghost} onPress={() => convertToInvoice(q)} accessibilityRole="button">
+                  <Text style={styles.ghostText}>{lang === 'en' ? 'Close deal' : 'Chốt đơn'}</Text>
+                </Pressable>
+              </View>
+            );
+          })}
+          {pendingQuotes.length > 3 && <Text style={styles.muted}>{lang === 'en' ? `+${pendingQuotes.length - 3} more quotes` : `+${pendingQuotes.length - 3} báo giá nữa`}</Text>}
         </View>
 
         <View style={styles.row}>

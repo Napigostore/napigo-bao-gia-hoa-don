@@ -1,0 +1,10 @@
+MỤC ĐÍCH ỨNG DỤNG
+Ứng dụng hỗ trợ thợ, người làm tự do, cá nhân và hộ kinh doanh nhỏ tạo báo giá và phiếu thu bán hàng nhanh chóng, chuyên nghiệp ngay trên thiết bị di động.
+
+CÁCH SỬ DỤNG VÀ KIỂM TRA (không cần đăng nhập, không cần tạo tài khoản)
+1. Mở ứng dụng: Toàn bộ dữ liệu được lưu an toàn cục bộ trên thiết bị của người dùng (offline-first), không yêu cầu đăng ký hay đăng nhập tài khoản.
+2. Tạo chứng từ: Người dùng chọn tạo "Báo giá" hoặc "Phiếu thu / Hóa đơn bán hàng".
+3. Thêm chi tiết: Nhập danh sách hạng mục, số lượng, đơn giá, chiết khấu và thuế.
+4. Chọn mẫu và định dạng: Tùy chọn mẫu báo giá và phiếu thu theo nhu cầu.
+5. Xem trước và xuất file: Xuất tài liệu định dạng PDF chất lượng cao để chia sẻ hoặc in ấn.
+6. Mua trong app (In-App Purchases) và khôi phục giao dịch: Người dùng có thể vào màn hình Bảng giá / Nâng cấp gói cước để xem thông tin các gói cước năm (Pro và Business) và bấm nút "Khôi phục giao dịch" (Restore purchase) để khôi phục giao dịch mua nếu có. Toàn bộ tính năng cốt lõi tạo và xuất PDF hoàn toàn sử dụng được miễn phí.

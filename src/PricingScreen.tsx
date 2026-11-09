@@ -1,4 +1,4 @@
-import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { PLANS, formatUsdPerYear } from './config/pricing.ts';
 
 // Subset of the App palette (light or dark) used by this screen.
@@ -17,14 +17,6 @@ export default function PricingScreen({ onBack, colors, font }: { onBack: () => 
           <Text style={[styles.name, { color: colors.text }]}>{plan.name}</Text>
           <Text style={[styles.price, { color: colors.text }]}>{formatUsdPerYear(plan)}</Text>
           <Text style={[styles.muted, { color: colors.muted }]}>{plan.hasAds ? 'Có quảng cáo' : 'Không quảng cáo'}</Text>
-          {plan.id !== 'free' && (
-            <Pressable
-              style={[styles.primary, { backgroundColor: colors.accent }]}
-              onPress={() => Alert.alert('Sắp ra mắt', 'Thanh toán chưa được bật.')}
-            >
-              <Text style={[styles.primaryText, { color: colors.onAccent }]}>Nâng cấp</Text>
-            </Pressable>
-          )}
         </View>
       ))}
     </ScrollView>
@@ -40,6 +32,4 @@ const makePricingStyles = (font?: string) =>
     name: { fontFamily: font, fontSize: 17, fontWeight: '600' },
     price: { fontFamily: font, fontSize: 20, fontWeight: '700' },
     muted: { fontFamily: font, fontSize: 15 },
-    primary: { borderRadius: 12, minHeight: 50, justifyContent: 'center', alignItems: 'center' },
-    primaryText: { fontFamily: font, fontSize: 17, fontWeight: '600' },
   });
