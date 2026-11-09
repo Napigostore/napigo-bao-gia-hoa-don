@@ -13,8 +13,12 @@
     },
     "newArchEnabled": true,
     "plugins": [
-      ["expo-image-picker", { "photosPermission": "Chọn logo và chữ ký để in trên báo giá và phiếu thu." }],
-      "./plugins/with-swift-concurrency.js"
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Chọn logo và chữ ký để in trên báo giá và phiếu thu."
+        }
+      ]
     ]
   }
 }
