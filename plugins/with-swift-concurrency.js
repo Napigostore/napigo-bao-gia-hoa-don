@@ -18,6 +18,8 @@ module.exports = config =>
       target.build_configurations.each do |bc|
         bc.build_settings['SWIFT_STRICT_CONCURRENCY'] = 'minimal'
         bc.build_settings['SWIFT_VERSION'] = '5.0'
+        // The archive compiles Swift with -Werror; this diagnostic is a warning that becomes an error, so keep warnings as warnings.
+        bc.build_settings['SWIFT_TREAT_WARNINGS_AS_ERRORS'] = 'NO'
       end
     end`;
     c.modResults.contents = s.replace(HOOK, m => m + block);
