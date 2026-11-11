@@ -1,1 +1,1 @@
-Quote & Invoice Maker
+Quoivo: Quote & Invoice Maker
