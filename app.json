@@ -11,7 +11,10 @@
       "icon": "./assets/icon.png",
       "bundleIdentifier": "com.napigo.baogiahoadon",
       "buildNumber": "1",
-      "supportsTablet": false
+      "supportsTablet": false,
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false
+      }
     },
     "newArchEnabled": true,
     "plugins": [
