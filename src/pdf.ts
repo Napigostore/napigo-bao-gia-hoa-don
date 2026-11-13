@@ -1,6 +1,4 @@
 // Builds a printable HTML document from the document's layout and opens the iOS share sheet (Save to Files / Print / AirPrint).
-import * as Print from 'expo-print';
-import * as Sharing from 'expo-sharing';
 import { amountInWords, amountInWordsEn, documentTotals, formatVND, lineTotal, type Totals } from './calc.ts';
 import type { Doc } from './storage.ts';
 import { docLayout, findTemplate } from './templates.ts';
@@ -235,15 +233,12 @@ export function docHtml(doc: Doc, seller: Seller = SELLER): string {
   </body></html>`;
 }
 
-export async function printDoc(doc: Doc, seller: Seller = SELLER): Promise<void> {
-  await Print.printAsync({ html: docHtml(doc, seller) });
+// Tạm gỡ tính năng in (expo-print) vì lỗi lệch phiên bản native khiến app không mở được.
+// Khi khôi phục, thay lại bằng Print.printAsync / Print.printToFileAsync + Sharing.shareAsync.
+export async function printDoc(_doc: Doc, _seller: Seller = SELLER): Promise<void> {
+  throw new Error('PRINT_TEMPORARILY_DISABLED');
 }
 
-export async function shareDocPdf(doc: Doc, seller: Seller = SELLER): Promise<void> {
-  const { uri } = await Print.printToFileAsync({ html: docHtml(doc, seller) });
-  if (await Sharing.isAvailableAsync()) {
-    await Sharing.shareAsync(uri, { mimeType: 'application/pdf', UTI: 'com.adobe.pdf', dialogTitle: doc.no });
-  } else {
-    await Print.printAsync({ uri });
-  }
+export async function shareDocPdf(_doc: Doc, _seller: Seller = SELLER): Promise<void> {
+  throw new Error('PRINT_TEMPORARILY_DISABLED');
 }
