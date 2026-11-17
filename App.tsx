@@ -3,6 +3,7 @@ import { Alert, Image, Modal, Platform, Pressable, SafeAreaView, ScrollView, Sty
 import { pickImageDataUri } from './src/imagePick.ts';
 import { StatusBar } from 'expo-status-bar';
 import { SymbolView } from 'expo-symbols';
+import { LinearGradient } from 'expo-linear-gradient';
 import { amountInWords, documentTotals, formatVND, nextNumber, nextStatus, quoteToInvoice, calcDiscountPct, addCategoryToList, resolveProductPricing, type DocKind, type LineItem, type Status } from './src/calc.ts';
 import { loadDb, saveDb, type CatalogItem, type Contact, type Db, type Doc, type SavedTemplate } from './src/storage.ts';
 import { printDoc, shareDocPdf } from './src/pdf.ts';
@@ -18,19 +19,25 @@ import { getSystemFont, FONT_CONFIG_BY_LANG, type AppLanguage } from './src/typo
 import { SUPPORTED_LANGUAGES, t } from './src/i18n.ts';
 
 
-// Apple system colors: gray / orange / green on tinted backgrounds, one set per color scheme.
+// Quoivo brand: indigo → violet, one color per job (quote = indigo, receipt = teal), soft tinted tiles, one set per color scheme.
 const LIGHT = {
-  bg: '#F2F2F7', card: '#FFFFFF', text: '#000000', muted: '#8E8E93', accent: '#007AFF', onAccent: '#FFFFFF',
-  accentSoft: '#EAF2FF', field: '#FFFFFF', segTrack: '#E5E5EA', segActive: '#FFFFFF', segText: '#3C3C43', error: '#FF3B30',
-  statusFg: { draft: '#636366', sent: '#C93400', paid: '#248A3D' } as Record<Status, string>,
-  statusBg: { draft: '#E5E5EA', sent: '#FFF0E0', paid: '#E3F6E8' } as Record<Status, string>,
+  bg: '#F4F5FB', card: '#FFFFFF', text: '#14142B', muted: '#6E7191', accent: '#4F46E5', onAccent: '#FFFFFF',
+  accentSoft: '#EEF0FF', field: '#F4F5FB', segTrack: '#E6E8F2', segActive: '#FFFFFF', segText: '#4E4B66', error: '#E5484D',
+  border: '#E6E8F2', shadow: '#2A2A72',
+  hero: ['#4F46E5', '#7C3AED'] as [string, string],
+  quote: '#4F46E5', quoteSoft: '#EEF0FF', receipt: '#0F9D8A', receiptSoft: '#E3F7F3',
+  statusFg: { draft: '#5B6178', sent: '#C2410C', paid: '#15803D' } as Record<Status, string>,
+  statusBg: { draft: '#EDEEF4', sent: '#FFF1E6', paid: '#E5F7EC' } as Record<Status, string>,
 };
 type Palette = typeof LIGHT;
 const DARK: Palette = {
-  bg: '#000000', card: '#1C1C1E', text: '#FFFFFF', muted: '#8E8E93', accent: '#0A84FF', onAccent: '#FFFFFF',
-  accentSoft: '#12263F', field: '#2C2C2E', segTrack: '#1C1C1E', segActive: '#636366', segText: '#EBEBF5', error: '#FF453A',
-  statusFg: { draft: '#AEAEB2', sent: '#FF9F0A', paid: '#32D74B' },
-  statusBg: { draft: '#2C2C2E', sent: '#3A2A10', paid: '#12301B' },
+  bg: '#0E0E1A', card: '#1A1A2E', text: '#F4F4FB', muted: '#A0A3BD', accent: '#8B85FF', onAccent: '#FFFFFF',
+  accentSoft: '#25244A', field: '#24243A', segTrack: '#1A1A2E', segActive: '#34345A', segText: '#D9DBE9', error: '#FF6369',
+  border: '#2A2A44', shadow: '#000000',
+  hero: ['#3B34C9', '#6D28D9'],
+  quote: '#8B85FF', quoteSoft: '#25244A', receipt: '#2DD4BF', receiptSoft: '#123733',
+  statusFg: { draft: '#B4B7CC', sent: '#FDBA74', paid: '#4ADE80' },
+  statusBg: { draft: '#26263C', sent: '#3A2614', paid: '#12301E' },
 };
 
 type Draft = Omit<Doc, 'createdAt'> & { createdAt?: string };
@@ -221,7 +228,8 @@ export default function App() {
 
   function updateItem(i: number, field: keyof LineItem, value: string) {
     if (!draft) return;
-    const items = draft.items.map((it, idx) => (idx === i ? { ...it, [field]: value } : it));
+    const v = field === 'qty' || field === 'discountPct' ? value.replace(',', '.') : value;
+    const items = draft.items.map((it, idx) => (idx === i ? { ...it, [field]: v } : it));
     setDraft({ ...draft, items });
   }
 
@@ -1111,7 +1119,7 @@ export default function App() {
                 <Text style={styles.paperMuted}>* Đơn giá chưa gồm thuế VAT</Text>
                 <Text style={styles.paperMuted}>Tạm tính: {formatVND(totals.subtotal)}</Text>
                 <Text style={styles.paperMuted}>Chiết khấu: − {formatVND(totals.discount)}</Text>
-                <Text style={styles.paperMuted}>Thuế VAT (${Math.max(Number(draft.taxPct) || 0, 0)}%): {formatVND(totals.tax)}</Text>
+                <Text style={styles.paperMuted}>Thuế VAT ({Math.max(Number(draft.taxPct) || 0, 0)}%): {formatVND(totals.tax)}</Text>
                 <Text style={styles.paperBold}>Tổng thanh toán: {formatVND(totals.total)}</Text>
                 <Text style={styles.paperMuted}>Bằng chữ: {amountInWords(totals.total)}</Text>
               </View>
@@ -1237,16 +1245,62 @@ export default function App() {
     <SafeAreaView style={styles.safe}>
       <StatusBar style="auto" />
       <ScrollView contentContainerStyle={styles.pad}>
-        <View style={styles.headerRow}>
-          <Text style={styles.h1}>{t('appTitle', lang)}</Text>
-          <Pressable
-            style={styles.iconBtn}
-            onPress={() => setShowSettings(true)}
-            accessibilityRole="button"
-            accessibilityLabel={t('settings', lang)}
-          >
-            <SymbolView name="gearshape" size={22} tintColor={c.accent} fallback={<Text style={{ fontSize: 22 }}>⚙️</Text>} />
+        {/* Hero: tên app, tiền chưa thu, đếm theo trạng thái — nhìn một lần là biết tình hình. */}
+        <LinearGradient colors={c.hero} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.hero}>
+          <View style={styles.heroTop}>
+            <View style={styles.flex}>
+              <Text style={styles.heroHello}>{lang === 'en' ? 'Hello 👋' : 'Xin chào 👋'}</Text>
+              <Text style={styles.heroTitle} numberOfLines={1} adjustsFontSizeToFit>{t('appTitle', lang)}</Text>
+            </View>
+            <Pressable style={styles.heroIcon} onPress={() => setShowSettings(true)} accessibilityRole="button" accessibilityLabel={t('settings', lang)}>
+              <SymbolView name="gearshape.fill" size={20} tintColor="#FFFFFF" fallback={<Text style={{ fontSize: 18 }}>⚙️</Text>} />
+            </Pressable>
+          </View>
+          <View>
+            <Text style={styles.heroLabel}>{lang === 'en' ? 'Waiting to be paid' : 'Đang chờ thu'}</Text>
+            <Text style={styles.heroAmount} adjustsFontSizeToFit numberOfLines={1}>{formatVND(outstanding)}</Text>
+          </View>
+          <View style={styles.heroStats}>
+            {(['draft', 'sent', 'paid'] as Status[]).map(s => (
+              <View key={s} style={styles.heroStat}>
+                <Text style={styles.heroStatNum}>{count(s)}</Text>
+                <Text style={styles.heroStatText}>{statusLabel(s)}</Text>
+              </View>
+            ))}
+          </View>
+        </LinearGradient>
+
+        {/* Hai việc chính: tạo báo giá, tạo phiếu thu — nút to, màu riêng, dễ nhớ. */}
+        <View style={styles.bigActions}>
+          <Pressable style={({ pressed }) => [styles.bigAction, pressed && styles.dimmed]} onPress={() => setPicker('QUO')} accessibilityRole="button">
+            <View style={[styles.bigActionIcon, { backgroundColor: c.quoteSoft }]}>
+              <SymbolView name="doc.text.fill" size={24} tintColor={c.quote} fallback={<Text style={{ fontSize: 22 }}>📝</Text>} />
+            </View>
+            <Text style={styles.bigActionTitle}>{t('newQuote', lang)}</Text>
+            <Text style={styles.bigActionSub}>{lang === 'en' ? 'Send a price offer' : 'Gửi giá cho khách'}</Text>
           </Pressable>
+          <Pressable style={({ pressed }) => [styles.bigAction, pressed && styles.dimmed]} onPress={() => setPicker('INV')} accessibilityRole="button">
+            <View style={[styles.bigActionIcon, { backgroundColor: c.receiptSoft }]}>
+              <SymbolView name="banknote.fill" size={24} tintColor={c.receipt} fallback={<Text style={{ fontSize: 22 }}>💵</Text>} />
+            </View>
+            <Text style={styles.bigActionTitle}>{t('newInvoice', lang)}</Text>
+            <Text style={styles.bigActionSub}>{lang === 'en' ? 'Collect payment' : 'Thu tiền, xuất phiếu'}</Text>
+          </Pressable>
+        </View>
+
+        <View style={styles.quickRow}>
+          {[
+            { key: 'cat', icon: 'shippingbox.fill', emoji: '📦', label: t('catalogButton', lang), onPress: () => setShowCatalog(true) },
+            { key: 'co', icon: 'building.2.fill', emoji: '🏢', label: t('companyInfo', lang), onPress: () => setShowCompany(true) },
+            { key: 'set', icon: 'slider.horizontal.3', emoji: '⚙️', label: t('settings', lang), onPress: () => setShowSettings(true) },
+          ].map(q => (
+            <Pressable key={q.key} style={({ pressed }) => [styles.quick, pressed && styles.dimmed]} onPress={q.onPress} accessibilityRole="button">
+              <View style={styles.quickIcon}>
+                <SymbolView name={q.icon as never} size={20} tintColor={c.accent} fallback={<Text style={{ fontSize: 18 }}>{q.emoji}</Text>} />
+              </View>
+              <Text style={styles.quickText} numberOfLines={2}>{q.label}</Text>
+            </Pressable>
+          ))}
         </View>
 
         {/* Napi Chốt: báo giá đã gửi mà khách chưa chốt, báo giá nào gửi lâu nhất xếp đầu, chốt xong là ra phiếu thu ngay. */}
@@ -1274,42 +1328,14 @@ export default function App() {
           {pendingQuotes.length > 3 && <Text style={styles.muted}>{lang === 'en' ? `+${pendingQuotes.length - 3} more quotes` : `+${pendingQuotes.length - 3} báo giá nữa`}</Text>}
         </View>
 
-        <View style={styles.row}>
-          <Pressable style={[styles.primary, styles.flex]} onPress={() => setPicker('QUO')}>
-            <Text style={styles.primaryText}>{t('newQuote', lang)}</Text>
-          </Pressable>
-          <Pressable style={[styles.primary, styles.flex]} onPress={() => setPicker('INV')}>
-            <Text style={styles.primaryText}>{t('newInvoice', lang)}</Text>
-          </Pressable>
-        </View>
+        <Text style={styles.sectionTitle}>{lang === 'en' ? 'Documents' : 'Chứng từ'}</Text>
 
-        {db.docs.length > 0 && (
-          <View style={styles.card}>
-            <View style={styles.row}>
-              {(['draft', 'sent', 'paid'] as Status[]).map(s => (
-                <View key={s} style={[styles.stat, { backgroundColor: c.statusBg[s] }]}>
-                  <Text style={[styles.statNum, { color: c.statusFg[s] }]}>{count(s)}</Text>
-                  <Text style={[styles.pillText, { color: c.statusFg[s] }]}>{statusLabel(s)}</Text>
-                </View>
-              ))}
-            </View>
-            {outstanding > 0 && <Text style={styles.muted}>{t('pendingReceipts', lang)} {formatVND(outstanding)}</Text>}
+        {db.docs.length === 0 && (
+          <View style={[styles.card, styles.emptyCard]}>
+            <Text style={{ fontSize: 40 }}>🧾</Text>
+            <Text style={[styles.muted, { textAlign: 'center' }]}>{t('noDocs', lang)}</Text>
           </View>
         )}
-
-        <View style={styles.row}>
-          <Pressable style={[styles.ghost, styles.flex]} onPress={() => setShowSettings(true)}>
-            <Text style={styles.ghostText}>{t('settings', lang)}</Text>
-          </Pressable>
-          <Pressable style={[styles.ghost, styles.flex]} onPress={() => setShowCatalog(true)}>
-            <Text style={styles.ghostText}>{t('catalogButton', lang)}</Text>
-          </Pressable>
-          <Pressable style={[styles.ghost, styles.flex]} onPress={() => setShowCompany(true)}>
-            <Text style={styles.ghostText}>{t('companyInfo', lang)}</Text>
-          </Pressable>
-        </View>
-
-        {db.docs.length === 0 && <Text style={styles.muted}>{t('noDocs', lang)}</Text>}
 
         {db.docs.length > 0 && (
           <View style={styles.segment}>
@@ -1329,6 +1355,14 @@ export default function App() {
           return (
             <View key={d.id} style={styles.card}>
               <Pressable style={styles.listRow} onPress={() => openDoc(d)}>
+                <View style={[styles.docIcon, { backgroundColor: d.kind === 'QUO' ? c.quoteSoft : c.receiptSoft }]}>
+                  <SymbolView
+                    name={d.kind === 'QUO' ? 'doc.text.fill' : 'banknote.fill'}
+                    size={20}
+                    tintColor={d.kind === 'QUO' ? c.quote : c.receipt}
+                    fallback={<Text style={{ fontSize: 18 }}>{d.kind === 'QUO' ? '📝' : '💵'}</Text>}
+                  />
+                </View>
                 <View style={styles.flex}>
                   <Text style={styles.bold}>{d.no}</Text>
                   <Text style={styles.muted}>{d.client}</Text>
@@ -1341,15 +1375,19 @@ export default function App() {
                   </View>
                 </View>
               </Pressable>
-              {!!next && (
-                <Pressable style={styles.ghost} onPress={() => advance(d)}>
-                  <Text style={styles.ghostText}>{next}</Text>
-                </Pressable>
-              )}
-              {d.kind === 'QUO' && !d.convertedTo && (
-                <Pressable style={styles.ghost} onPress={() => convertToInvoice(d)}>
-                  <Text style={styles.ghostText}>{t('convertToInvoice', lang)}</Text>
-                </Pressable>
+              {(!!next || (d.kind === 'QUO' && !d.convertedTo)) && (
+                <View style={styles.rowBtns}>
+                  {!!next && (
+                    <Pressable style={[styles.ghost, styles.flex]} onPress={() => advance(d)}>
+                      <Text style={styles.ghostText}>{next}</Text>
+                    </Pressable>
+                  )}
+                  {d.kind === 'QUO' && !d.convertedTo && (
+                    <Pressable style={[styles.ghost, styles.flex, { backgroundColor: c.receiptSoft }]} onPress={() => convertToInvoice(d)}>
+                      <Text style={[styles.ghostText, { color: c.receipt }]}>{t('convertToInvoice', lang)}</Text>
+                    </Pressable>
+                  )}
+                </View>
               )}
             </View>
           );
@@ -1515,13 +1553,13 @@ const makeStyles = (c: Palette, lang: AppLanguage = 'vi') => {
     muted: { fontFamily: font, fontSize: 15, color: c.muted, lineHeight: Math.round(15 * cfg.lineHeightFactor) },
     link: { fontFamily: font, color: c.accent, fontSize: 17, minHeight: 48, paddingVertical: 8, textAlignVertical: 'center' },
     error: { fontFamily: font, color: c.error, fontSize: 13 },
-    input: { fontFamily: font, backgroundColor: c.field, borderRadius: 12, paddingHorizontal: 16, paddingVertical: 16, fontSize: 17, color: c.text },
+    input: { fontFamily: font, backgroundColor: c.field, borderRadius: 14, borderWidth: 1, borderColor: c.border, paddingHorizontal: 16, paddingVertical: 15, fontSize: 17, color: c.text },
     row: { flexDirection: 'row', gap: 8, alignItems: 'center' },
     flex: { flex: 1 },
     small: { fontFamily: font, width: 64, backgroundColor: c.field, borderRadius: 12, paddingHorizontal: 8, paddingVertical: 16, fontSize: 17, color: c.text },
     mid: { fontFamily: font, width: 104, backgroundColor: c.field, borderRadius: 12, paddingHorizontal: 8, paddingVertical: 16, fontSize: 17, color: c.text },
     itemBox: { gap: 8, paddingBottom: 8 },
-    chip: { flex: 1, minHeight: 48, borderRadius: 12, alignItems: 'center', justifyContent: 'center', backgroundColor: c.field },
+    chip: { flex: 1, minHeight: 48, borderRadius: 14, alignItems: 'center', justifyContent: 'center', backgroundColor: c.field, borderWidth: 1, borderColor: c.border },
     chipOn: { backgroundColor: c.accent },
     chipText: { fontFamily: font, fontSize: 17, color: c.text },
     chipTextOn: { color: c.onAccent, fontWeight: '600' },
@@ -1533,7 +1571,10 @@ const makeStyles = (c: Palette, lang: AppLanguage = 'vi') => {
     delSmall: { minWidth: 36, minHeight: 48, alignItems: 'center', justifyContent: 'center' },
     ckBtn: { minHeight: 48, paddingHorizontal: 12, borderRadius: 12, backgroundColor: c.accentSoft, alignItems: 'center', justifyContent: 'center' },
     ckBtnText: { fontFamily: font, fontSize: 15, fontWeight: '600', color: c.accent },
-    card: { backgroundColor: c.card, borderRadius: 16, padding: 16, gap: 8 },
+    card: {
+      backgroundColor: c.card, borderRadius: 20, padding: 16, gap: 8,
+      shadowColor: c.shadow, shadowOpacity: 0.08, shadowRadius: 16, shadowOffset: { width: 0, height: 6 }, elevation: 2,
+    },
     listRow: { flexDirection: 'row', alignItems: 'center', gap: 16, minHeight: 48 },
     listRight: { alignItems: 'flex-end', gap: 8 },
     swatch: { width: 8, alignSelf: 'stretch', borderRadius: 4, minHeight: 40 },
@@ -1543,13 +1584,44 @@ const makeStyles = (c: Palette, lang: AppLanguage = 'vi') => {
     pillText: { fontFamily: font, fontSize: 13, fontWeight: '600' },
     segment: { flexDirection: 'row', backgroundColor: c.segTrack, borderRadius: 24, padding: 4 },
     segItem: { flex: 1, minHeight: 44, borderRadius: 20, alignItems: 'center', justifyContent: 'center' },
-    segActive: { backgroundColor: c.segActive },
+    segActive: { backgroundColor: c.segActive, shadowColor: c.shadow, shadowOpacity: 0.1, shadowRadius: 6, shadowOffset: { width: 0, height: 2 }, elevation: 1 },
     segText: { fontFamily: font, fontSize: 15, color: c.segText },
     segTextActive: { fontWeight: '600', color: c.text },
-    primary: { backgroundColor: c.accent, borderRadius: 12, minHeight: 48, justifyContent: 'center', alignItems: 'center' },
-    primaryText: { fontFamily: font, color: c.onAccent, fontSize: 17, fontWeight: '600' },
-    ghost: { backgroundColor: c.accentSoft, borderRadius: 12, minHeight: 48, justifyContent: 'center', alignItems: 'center' },
-    ghostText: { fontFamily: font, color: c.accent, fontSize: 17 },
+    primary: {
+      backgroundColor: c.accent, borderRadius: 16, minHeight: 52, paddingHorizontal: 16, justifyContent: 'center', alignItems: 'center',
+      shadowColor: c.accent, shadowOpacity: 0.3, shadowRadius: 10, shadowOffset: { width: 0, height: 4 }, elevation: 3,
+    },
+    primaryText: { fontFamily: font, color: c.onAccent, fontSize: 17, fontWeight: '700' },
+    ghost: { backgroundColor: c.accentSoft, borderRadius: 14, minHeight: 48, paddingHorizontal: 14, justifyContent: 'center', alignItems: 'center' },
+    ghostText: { fontFamily: font, color: c.accent, fontSize: 16, fontWeight: '600' },
+    // Home screen
+    hero: { borderRadius: 28, padding: 20, gap: 16, marginTop: 4 },
+    heroTop: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+    heroHello: { fontFamily: font, fontSize: 15, color: 'rgba(255,255,255,0.8)' },
+    heroTitle: { fontFamily: font, fontSize: 24, fontWeight: '800', color: '#FFFFFF', letterSpacing: 0.2 },
+    heroIcon: { width: 44, height: 44, borderRadius: 22, backgroundColor: 'rgba(255,255,255,0.18)', alignItems: 'center', justifyContent: 'center' },
+    heroLabel: { fontFamily: font, fontSize: 13, fontWeight: '600', color: 'rgba(255,255,255,0.75)', textTransform: 'uppercase', letterSpacing: 0.6 },
+    heroAmount: { fontFamily: font, fontSize: 32, fontWeight: '800', color: '#FFFFFF' },
+    heroStats: { flexDirection: 'row', gap: 8 },
+    heroStat: { flex: 1, borderRadius: 16, paddingVertical: 10, alignItems: 'center', backgroundColor: 'rgba(255,255,255,0.16)' },
+    heroStatNum: { fontFamily: font, fontSize: 22, fontWeight: '800', color: '#FFFFFF' },
+    heroStatText: { fontFamily: font, fontSize: 12, fontWeight: '600', color: 'rgba(255,255,255,0.85)' },
+    bigActions: { flexDirection: 'row', gap: 12 },
+    bigAction: {
+      flex: 1, borderRadius: 22, padding: 16, gap: 10, minHeight: 116, backgroundColor: c.card,
+      shadowColor: c.shadow, shadowOpacity: 0.08, shadowRadius: 16, shadowOffset: { width: 0, height: 6 }, elevation: 2,
+    },
+    bigActionIcon: { width: 48, height: 48, borderRadius: 16, alignItems: 'center', justifyContent: 'center' },
+    bigActionTitle: { fontFamily: font, fontSize: 17, fontWeight: '700', color: c.text },
+    bigActionSub: { fontFamily: font, fontSize: 13, color: c.muted },
+    quickRow: { flexDirection: 'row', gap: 12 },
+    quick: { flex: 1, alignItems: 'center', gap: 6, paddingVertical: 12, borderRadius: 18, backgroundColor: c.card, minHeight: 84, justifyContent: 'center' },
+    quickIcon: { width: 40, height: 40, borderRadius: 14, backgroundColor: c.accentSoft, alignItems: 'center', justifyContent: 'center' },
+    quickText: { fontFamily: font, fontSize: 13, fontWeight: '600', color: c.text, textAlign: 'center' },
+    sectionTitle: { fontFamily: font, fontSize: 20, fontWeight: '800', color: c.text, marginTop: 12 },
+    docIcon: { width: 44, height: 44, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
+    emptyCard: { alignItems: 'center', gap: 8, paddingVertical: 28 },
+    rowBtns: { flexDirection: 'row', gap: 8 },
     actionBtn: { flexDirection: 'row', gap: 8 },
     dimmed: { opacity: 0.4 },
     paper: { backgroundColor: '#FFFFFF', borderRadius: 16, padding: 24, gap: 8 },

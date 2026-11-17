@@ -27,6 +27,13 @@ test('templates: 110 total, 16 VN and 94 international, unique ids, findTemplate
   assert.equal(findTemplate('nope'), undefined);
 });
 
+test('decimal discount, qty and VAT, dot or comma', () => {
+  assert.equal(lineTotal({ qty: '1,5', price: 100000, discountPct: '12,5' }), 131250);
+  assert.equal(lineTotal({ qty: '1.5', price: 100000, discountPct: '12.5' }), 131250);
+  const t = documentTotals({ items: [{ qty: 1, price: 1000000 }], discountPct: '2,5', taxPct: '8,5' });
+  assert.deepEqual(t, { subtotal: 1000000, discount: 25000, tax: 82875, total: 1057875 });
+});
+
 test('lineTotal basic and with discount', () => {
   assert.equal(lineTotal({ qty: 2, price: 150000 }), 300000);
   assert.equal(lineTotal({ qty: 2, price: 150000, discountPct: 10 }), 270000);

@@ -12,12 +12,17 @@ export function round2(n: number): number {
   return Math.round((Number(n) + Number.EPSILON) * 100) / 100;
 }
 
+// Accepts a decimal comma ("5,5") as typed on a Vietnamese keyboard.
+function num(v: number | string | undefined): number {
+  return Number(typeof v === 'string' ? v.trim().replace(',', '.') : v) || 0;
+}
+
 function pct(v: number | string | undefined): number {
-  return Math.min(Math.max(Number(v) || 0, 0), 100);
+  return Math.min(Math.max(num(v), 0), 100);
 }
 
 export function lineTotal(item: LineItem): number {
-  const qty = Number(item.qty) || 0;
+  const qty = num(item.qty);
   const price = Number(item.price) || 0;
   return round2(qty * price * (1 - pct(item.discountPct) / 100));
 }
@@ -26,7 +31,7 @@ export function documentTotals(doc: DocInput): Totals {
   const items = Array.isArray(doc.items) ? doc.items : [];
   const subtotal = round2(items.reduce((sum, it) => sum + lineTotal(it), 0));
   const afterDiscount = round2(subtotal * (1 - pct(doc.discountPct) / 100));
-  const taxPct = Math.max(Number(doc.taxPct) || 0, 0);
+  const taxPct = Math.max(num(doc.taxPct), 0);
   const tax = round2((afterDiscount * taxPct) / 100);
   return { subtotal, discount: round2(subtotal - afterDiscount), tax, total: round2(afterDiscount + tax) };
 }
