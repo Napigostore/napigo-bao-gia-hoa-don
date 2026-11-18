@@ -80,7 +80,7 @@ export const UI_STRINGS = {
     allCategories: 'Tất cả',
     noProducts: 'Chưa có sản phẩm nào.',
     pricingButton: 'Bảng giá dịch vụ',
-    pricingButtonHint: 'Gói Free, Pro, Business',
+    pricingButtonHint: 'Gói Free, Pro',
     aboutAppleDesc: 'Thiết kế theo chuẩn Apple Human Interface Guidelines: font hệ thống SF Pro, lưới 8pt, vùng chạm tối thiểu 44pt, hỗ trợ Chế độ Sáng / Tối.',
     // Startup language modal
     welcomeTitle: 'Chào mừng bạn',
@@ -137,7 +137,7 @@ export const UI_STRINGS = {
     allCategories: 'All',
     noProducts: 'No products yet.',
     pricingButton: 'Pricing & Plans',
-    pricingButtonHint: 'Free, Pro, Business plans',
+    pricingButtonHint: 'Free and Pro plans',
     aboutAppleDesc: 'Designed per Apple Human Interface Guidelines: SF Pro system typography, 8pt grid, >=44pt tap targets, Light & Dark mode support.',
     // Startup language modal
     welcomeTitle: 'Welcome',

@@ -3,17 +3,15 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { lineTotal, documentTotals, canMove, nextNumber, formatVND, nextStatus, amountInWords, quoteToInvoice, calcDiscountPct, addCategoryToList, removeCategoryFromList, resolveProductPricing, type ConvertibleDoc, type DocInput } from './calc.ts';
 import { TEMPLATES, templatesFor, findTemplate } from './templates.ts';
-import { PLANS, formatUsdPerYear } from './config/pricing.ts';
+import { PLANS, formatPlanPrices } from './config/pricing.ts';
 import { APPLE_TYPOGRAPHY_SCALE, FONT_CONFIG_BY_LANG, getPdfFontFamily, getSystemFont } from './typography.ts';
 import { SUPPORTED_LANGUAGES, t } from './i18n.ts';
 
-test('pricing: 3 plans Free/Pro/Business with CEO prices, ads only on Free', () => {
-  assert.deepEqual(PLANS.map(p => p.id), ['free', 'pro', 'business']);
-  assert.deepEqual(PLANS.map(p => p.priceUsdPerYear), [0, 1.99, 4.99]);
-  assert.deepEqual(PLANS.map(p => p.hasAds), [true, false, false]);
-  assert.equal(formatUsdPerYear(PLANS[0]), '0 USD');
-  assert.equal(formatUsdPerYear(PLANS[1]), '1.99 USD/năm');
-  assert.equal(formatUsdPerYear(PLANS[2]), '4.99 USD/năm');
+test('pricing: Free + Pro matching App Store (Pro monthly 1.99, yearly 9.99), ads only on Free', () => {
+  assert.deepEqual(PLANS.map(p => p.id), ['free', 'pro']);
+  assert.deepEqual(PLANS.map(p => p.hasAds), [true, false]);
+  assert.deepEqual(formatPlanPrices(PLANS[0]), ['0 USD']);
+  assert.deepEqual(formatPlanPrices(PLANS[1]), ['1.99 USD/tháng', '9.99 USD/năm']);
 });
 
 test('templates: 110 total, 16 VN and 94 international, unique ids, findTemplate works', () => {

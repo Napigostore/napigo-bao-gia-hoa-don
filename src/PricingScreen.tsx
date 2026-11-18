@@ -1,5 +1,5 @@
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
-import { PLANS, formatUsdPerYear } from './config/pricing.ts';
+import { PLANS, formatPlanPrices } from './config/pricing.ts';
 
 // Subset of the App palette (light or dark) used by this screen.
 type Colors = { text: string; muted: string; card: string; accent: string; onAccent: string };
@@ -15,7 +15,9 @@ export default function PricingScreen({ onBack, colors, font }: { onBack: () => 
       {PLANS.map(plan => (
         <View key={plan.id} style={[styles.card, { backgroundColor: colors.card }]}>
           <Text style={[styles.name, { color: colors.text }]}>{plan.name}</Text>
-          <Text style={[styles.price, { color: colors.text }]}>{formatUsdPerYear(plan)}</Text>
+          {formatPlanPrices(plan).map(line => (
+            <Text key={line} style={[styles.price, { color: colors.text }]}>{line}</Text>
+          ))}
           <Text style={[styles.muted, { color: colors.muted }]}>{plan.hasAds ? 'Có quảng cáo' : 'Không quảng cáo'}</Text>
         </View>
       ))}
