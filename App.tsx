@@ -13,6 +13,8 @@ import { Thumb } from './src/Thumb.tsx';
 import { validateEInvoice } from './src/einvoice.ts';
 import { shareEInvoiceXml } from './src/einvoiceShare.ts';
 import PricingScreen from './src/PricingScreen.tsx';
+import { readCachedPro, refreshPro } from './src/iap.ts';
+import { FREE_EXPORTS_PER_DAY, exportsLeftToday, recordExport } from './src/quota.ts';
 import type { Seller } from './src/config/seller.ts';
 import { docLayout, findTemplate, templateLayout, templatesFor, type Template } from './src/templates.ts';
 import { getSystemFont, FONT_CONFIG_BY_LANG, type AppLanguage } from './src/typography.ts';
@@ -173,6 +175,7 @@ export default function App() {
   const [isNew, setIsNew] = useState(true);
   const [error, setError] = useState('');
   const [showPricing, setShowPricing] = useState(false);
+  const [isPro, setIsPro] = useState(false);
   const [preview, setPreview] = useState(false);
   const [picker, setPicker] = useState<DocKind | null>(null);
   const [showCompany, setShowCompany] = useState(false);
@@ -268,6 +271,46 @@ export default function App() {
     Alert.alert('Đã lưu mẫu', 'Mẫu nằm ở mục “Mẫu của tôi” khi tạo mới.');
   }
 
+  // Pro is checked from the App Store on launch; the cached value keeps Pro working offline.
+  useEffect(() => {
+    let alive = true;
+    readCachedPro().then(v => alive && setIsPro(v));
+    refreshPro().then(v => alive && setIsPro(v));
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  function showUpgradeAlert(message: string) {
+    Alert.alert('Nâng cấp Pro', message, [
+      { text: 'Để sau', style: 'cancel' },
+      { text: 'Xem gói Pro', onPress: () => setShowPricing(true) },
+    ]);
+  }
+
+  // Free plan: limited exports per day. Pro: no limit. Counts only exports that succeed.
+  async function runExport(action: () => Promise<void>, failMessage: string) {
+    if (!isPro && (await exportsLeftToday()) <= 0) {
+      showUpgradeAlert(`Hôm nay bạn đã dùng hết ${FREE_EXPORTS_PER_DAY} lượt xuất miễn phí. Nâng cấp Pro để xuất không giới hạn.`);
+      return;
+    }
+    try {
+      await action();
+      if (!isPro) await recordExport();
+    } catch {
+      Alert.alert(failMessage);
+    }
+  }
+
+  // Editing a template layout is a Pro feature.
+  function openTplEditor(next: { id?: string; kind: DocKind; name: string; layout: Layout }) {
+    if (!isPro) {
+      showUpgradeAlert('Chỉnh sửa mẫu hóa đơn là tính năng của gói Pro.');
+      return;
+    }
+    setTplEditor(next);
+  }
+
   // Checks the invoice fields first; lists every problem so the user fixes them in one pass.
   function exportEInvoice(doc: Doc, seller: Seller) {
     const issues = validateEInvoice(doc, seller);
@@ -275,7 +318,7 @@ export default function App() {
       Alert.alert('Chưa đủ thông tin hóa đơn điện tử', issues.map(i => `• ${i.message}`).join('\n'));
       return;
     }
-    shareEInvoiceXml(doc, seller).catch(() => Alert.alert('Không xuất được XML'));
+    void runExport(() => shareEInvoiceXml(doc, seller), 'Không xuất được XML');
   }
 
   async function saveTplEditor() {
@@ -787,6 +830,8 @@ export default function App() {
         <StatusBar style="auto" />
         <PricingScreen
           colors={{ text: c.text, muted: c.muted, card: c.card, accent: c.accent, onAccent: c.onAccent }}
+          isPro={isPro}
+          onProChange={setIsPro}
           onBack={() => setShowPricing(false)}
         />
       </SafeAreaView>
@@ -967,8 +1012,8 @@ export default function App() {
             <ActionButton styles={styles} color={c.accent} label="Xem trước" symbol="eye" glyph="👁" disabled={noClient} onPress={() => setPreview(true)} />
           </View>
           <View style={styles.row}>
-            <ActionButton styles={styles} color={c.accent} label="In" symbol="printer" glyph="🖨" disabled={noClient} onPress={() => printDoc(asDoc(draft), db.seller).catch(() => Alert.alert('Không in được'))} />
-            <ActionButton styles={styles} color={c.accent} label="Chia sẻ" symbol="square.and.arrow.up" glyph="⬆" disabled={noClient} onPress={() => shareDocPdf(asDoc(draft), db.seller).catch(() => Alert.alert('Không xuất được PDF'))} />
+            <ActionButton styles={styles} color={c.accent} label="In" symbol="printer" glyph="🖨" disabled={noClient} onPress={() => void runExport(() => printDoc(asDoc(draft), db.seller), 'Không in được')} />
+            <ActionButton styles={styles} color={c.accent} label="Chia sẻ" symbol="square.and.arrow.up" glyph="⬆" disabled={noClient} onPress={() => void runExport(() => shareDocPdf(asDoc(draft), db.seller), 'Không xuất được PDF')} />
           </View>
           <Pressable style={styles.ghost} onPress={saveAsTemplate} accessibilityRole="button">
             <Text style={styles.ghostText}>Lưu làm mẫu của tôi</Text>
@@ -1167,7 +1212,7 @@ export default function App() {
                 <Thumb layout={savedLayout(tpl)} accent={findTemplate(tpl.baseId)?.accent ?? c.accent} width={cardWidth - 16} />
                 <Text style={[styles.bold, { fontSize: 13 }]} numberOfLines={2}>{tpl.name}</Text>
                 <View style={styles.listRow}>
-                  <Pressable onPress={() => setTplEditor({ id: tpl.id, kind: tpl.kind, name: tpl.name, layout: savedLayout(tpl) })} accessibilityRole="button">
+                  <Pressable onPress={() => openTplEditor({ id: tpl.id, kind: tpl.kind, name: tpl.name, layout: savedLayout(tpl) })} accessibilityRole="button">
                     <Text style={styles.link}>Sửa ✎</Text>
                   </Pressable>
                   <Pressable onPress={() => removeTemplate(tpl.id)} accessibilityRole="button" accessibilityLabel={`Xóa mẫu ${tpl.name}`}>
@@ -1192,7 +1237,7 @@ export default function App() {
             <Text style={styles.muted}>Chưa có mẫu cho ngôn ngữ này. Tạo mẫu mới hoặc bắt đầu từ trang trống.</Text>
           )}
 
-          <Pressable style={styles.ghost} onPress={() => setTplEditor({ kind: picker, name: '', layout: defaultLayout(picker, lang) })} accessibilityRole="button">
+          <Pressable style={styles.ghost} onPress={() => openTplEditor({ kind: picker, name: '', layout: defaultLayout(picker, lang) })} accessibilityRole="button">
             <Text style={styles.ghostText}>+ Tạo mẫu mới (sắp xếp phần in)</Text>
           </Pressable>
           <Pressable style={styles.ghost} onPress={() => startNew(picker)}>
