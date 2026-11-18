@@ -109,11 +109,9 @@ export default function PricingScreen({
         </View>
       )}
 
-      {!isPro && (
-        <Pressable onPress={onRestore} disabled={busy} style={styles.restore} accessibilityRole="button">
-          <Text style={[styles.link, { color: colors.accent }]}>Khôi phục giao dịch</Text>
-        </Pressable>
-      )}
+      <Pressable onPress={onRestore} disabled={busy} style={styles.restore} accessibilityRole="button">
+        <Text style={[styles.link, { color: colors.accent }]}>Khôi phục giao dịch</Text>
+      </Pressable>
     </ScrollView>
   );
 }
