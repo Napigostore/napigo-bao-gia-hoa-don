@@ -9,7 +9,8 @@ KEY FEATURES:
 • Private by design: all data stays safe on your device
 
 PLANS:
-Free download with ads supported. Upgrade to Pro or Business yearly plans for an ad-free experience.
+• Free: free to download and use, with ads. Full quote and receipt features.
+• Pro: ad-free, USD 1.99 per month or USD 9.99 per year.
 
 NOTE:
-This app generates quotes and receipts for business client communication.
+This app generates quotes and receipts for business client communication. It does not replace official e-invoices issued with a tax authority code.

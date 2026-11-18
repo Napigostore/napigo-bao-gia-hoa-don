@@ -7,4 +7,4 @@ CÁCH SỬ DỤNG VÀ KIỂM TRA (không cần đăng nhập, không cần tạo
 3. Thêm chi tiết: Nhập danh sách hạng mục, số lượng, đơn giá, chiết khấu và thuế.
 4. Chọn mẫu và định dạng: Tùy chọn mẫu báo giá và phiếu thu theo nhu cầu.
 5. Xem trước và xuất file: Xuất tài liệu định dạng PDF chất lượng cao để chia sẻ hoặc in ấn.
-6. Mua trong app (In-App Purchases) và khôi phục giao dịch: Người dùng có thể vào màn hình Bảng giá / Nâng cấp gói cước để xem thông tin các gói cước năm (Pro và Business) và bấm nút "Khôi phục giao dịch" (Restore purchase) để khôi phục giao dịch mua nếu có. Toàn bộ tính năng cốt lõi tạo và xuất PDF hoàn toàn sử dụng được miễn phí.
+6. Gói Pro: Màn hình Bảng giá (Cài đặt > Bảng giá dịch vụ) hiển thị thông tin gói Free và Pro. Toàn bộ tính năng tạo và xuất PDF hoàn toàn sử dụng được miễn phí.

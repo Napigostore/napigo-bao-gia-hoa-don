@@ -7,4 +7,4 @@ HOW TO USE (no login, no account needed)
 3. Add Items: enter line items, quantity, unit price, discounts, and tax rates.
 4. Customize Layout: pick from available professional templates and document styles.
 5. Export & Share: generate clean, high-resolution PDF documents ready to share or print.
-6. In-App Purchases: navigate to the pricing or plan upgrade screen to view available yearly subscriptions (Pro and Business) and tap "Restore Purchase" to restore previous purchases. Core document creation and PDF export features are fully accessible for free.
+6. Pro plan: the Pricing screen (Settings > Service pricing) lists the Free and Pro plans. All quote and receipt creation and PDF export features are free to use.

@@ -9,7 +9,8 @@ TÍNH NĂNG NỔI BẬT:
 • Lưu trữ dữ liệu an toàn ngay trên thiết bị của bạn
 
 CÁC GÓI SỬ DỤNG:
-Ứng dụng cho phép tải và sử dụng miễn phí (có quảng cáo). Bạn có thể nâng cấp lên gói Pro hoặc Business theo năm để sử dụng hoàn toàn không có quảng cáo.
+• Free: miễn phí, có quảng cáo. Đầy đủ tính năng tạo báo giá và phiếu thu.
+• Pro: không quảng cáo, 1,99 USD mỗi tháng hoặc 9,99 USD mỗi năm.
 
 LƯU Ý:
 Ứng dụng hỗ trợ tạo báo giá và phiếu thu bán hàng nội bộ để gửi khách hàng. Ứng dụng không thay thế chứng từ hóa đơn điện tử có mã của cơ quan thuế.
