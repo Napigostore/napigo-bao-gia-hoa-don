@@ -1250,7 +1250,7 @@ export default function App() {
           <View style={styles.heroTop}>
             <View style={styles.flex}>
               <Text style={styles.heroHello}>{lang === 'en' ? 'Hello 👋' : 'Xin chào 👋'}</Text>
-              <Text style={styles.heroTitle} numberOfLines={1} adjustsFontSizeToFit>{t('appTitle', lang)}</Text>
+              <Text style={styles.heroTitle}>{t('appTitle', lang)}</Text>
             </View>
             <Pressable style={styles.heroIcon} onPress={() => setShowSettings(true)} accessibilityRole="button" accessibilityLabel={t('settings', lang)}>
               <SymbolView name="gearshape.fill" size={20} tintColor="#FFFFFF" fallback={<Text style={{ fontSize: 18 }}>⚙️</Text>} />
