@@ -7,4 +7,6 @@ CÁCH SỬ DỤNG VÀ KIỂM TRA (không cần đăng nhập, không cần tạo
 3. Thêm chi tiết: Nhập danh sách hạng mục, số lượng, đơn giá, chiết khấu và thuế.
 4. Chọn mẫu và định dạng: Tùy chọn mẫu báo giá và phiếu thu theo nhu cầu.
 5. Xem trước và xuất file: Xuất tài liệu định dạng PDF chất lượng cao để chia sẻ hoặc in ấn.
-6. Gói Pro: Màn hình Bảng giá (Cài đặt > Bảng giá dịch vụ) hiển thị thông tin gói Free và Pro. Toàn bộ tính năng tạo và xuất PDF hoàn toàn sử dụng được miễn phí.
+6. Gói Free và Pro: Gói Free có quảng cáo và giới hạn 5 lượt xuất PDF, in hoặc XML mỗi ngày. Gói Pro (tự động gia hạn, 1,99 USD/tháng hoặc 9,99 USD/năm) bỏ quảng cáo, xuất không giới hạn và cho phép chỉnh sửa mẫu hóa đơn.
+7. Đường dẫn mua: Cài đặt > Bảng giá dịch vụ > chọn "Mua theo tháng" hoặc "Mua theo năm", xác nhận bằng Face ID/Touch ID hoặc mật khẩu Apple ID. Nút "Khôi phục giao dịch" nằm ở cuối màn hình Bảng giá để khôi phục gói Pro đã mua trên tài khoản App Store khác hoặc sau khi cài lại app.
+8. Kiểm tra: Dùng tài khoản Sandbox để mua thử. Gói Pro đã kích hoạt sẽ hiển thị "Bạn đang dùng gói Pro" và mở khóa các tính năng trên.

@@ -7,4 +7,6 @@ HOW TO USE (no login, no account needed)
 3. Add Items: enter line items, quantity, unit price, discounts, and tax rates.
 4. Customize Layout: pick from available professional templates and document styles.
 5. Export & Share: generate clean, high-resolution PDF documents ready to share or print.
-6. Pro plan: the Pricing screen (Settings > Service pricing) lists the Free and Pro plans. All quote and receipt creation and PDF export features are free to use.
+6. Free and Pro plans: the Free plan is ad-supported and limited to 5 PDF, print or XML exports per day. The Pro plan (auto-renewing, 1.99 USD/month or 9.99 USD/year) removes ads, allows unlimited exports and allows editing invoice templates.
+7. Purchase path: Settings > Pricing & Plans > tap "Buy monthly" or "Buy yearly", then confirm with Face ID / Touch ID or the Apple ID password. The "Restore purchases" button is at the bottom of the Pricing screen to restore a Pro subscription on another device or after reinstalling the app.
+8. Testing: use a Sandbox tester account to purchase. Once Pro is active, the screen shows "You are using the Pro plan" and the Pro features unlock.
